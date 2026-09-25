@@ -1,19 +1,20 @@
 import Link from "next/link";
 import { addMonths, format, parse } from "date-fns";
 import { requireSession } from "@/lib/auth";
-import { getBudgetWithExpenses, currentMonth } from "@/lib/data";
+import { getMonthSpending, currentMonth } from "@/lib/data";
 import { budgetPercentSpent } from "@/lib/calculations";
+import { categoryColor } from "@/lib/categories";
 import { formatCurrency } from "@/lib/currency";
 import { formatDay } from "@/lib/dates";
 import { deleteExpense } from "@/lib/actions/budget";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { ProgressRing } from "@/components/ui/ProgressRing";
 import { PageHeader, SectionTitle } from "@/components/ui/PageHeader";
 import { Stat } from "@/components/ui/Stat";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { SetBudgetForm } from "@/components/budget/SetBudgetForm";
+import { BudgetPlanForm } from "@/components/budget/BudgetPlanForm";
 import { LogExpenseForm } from "@/components/budget/LogExpenseForm";
+import { SpendingBreakdown } from "@/components/budget/SpendingBreakdown";
 import { CountUp } from "@/components/motion/CountUp";
 
 export default async function BudgetPage({
@@ -31,19 +32,23 @@ export default async function BudgetPage({
   const nextMonth = format(addMonths(monthDate, 1), "yyyy-MM");
   const monthLabel = format(monthDate, "MMMM yyyy");
 
-  const { budget, expenseList, spent, remaining } = await getBudgetWithExpenses(household.id, month);
-  const percentSpent = budget ? budgetPercentSpent(budget.budgetedAmount, spent) : 0;
-  const over = remaining < 0;
+  const { categories, expenseList, totalPlanned, totalSpent, remaining } = await getMonthSpending(
+    household.id,
+    month,
+  );
+  const hasPlan = totalPlanned > 0;
+  const over = hasPlan && remaining < 0;
+  const percentSpent = hasPlan ? budgetPercentSpent(totalPlanned, totalSpent) : 0;
 
-  // Only this month has "days left"; past and future months don't.
+  // Only the current month has "days left".
   const today = new Date();
   const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
   const daysLeft = month === thisMonth ? daysInMonth - today.getDate() + 1 : null;
-  const perDay = budget && daysLeft && remaining > 0 ? Math.floor(remaining / daysLeft) : null;
+  const perDay = hasPlan && daysLeft && remaining > 0 ? Math.floor(remaining / daysLeft) : null;
 
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow="Monthly budget" title="Groceries," accent={format(monthDate, "MMMM")}>
+      <PageHeader eyebrow="Monthly budget" title="Spending," accent={format(monthDate, "MMMM")}>
         <div className="glass flex items-center gap-1 rounded-full p-1">
           <Link
             href={`/budget?month=${prevMonth}`}
@@ -63,85 +68,97 @@ export default async function BudgetPage({
         </div>
       </PageHeader>
 
-      {budget && (
-        <Card className="overflow-hidden p-7 sm:p-10">
-          <div
-            aria-hidden
-            className={`pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full blur-3xl ${over ? "bg-coral/20" : "bg-gold/15"}`}
-          />
-          <div className="relative flex flex-col gap-10 md:flex-row md:items-center">
-            <ProgressRing percent={percentSpent} size={200} tone={over ? "over" : "spend"} label="Budget spent">
-              <div>
-                <p className="font-display text-5xl">
-                  <CountUp value={percentSpent} format="percent" />
+      {/* Headline + where the money went */}
+      <Card className="overflow-hidden p-7 sm:p-10">
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full blur-3xl ${over ? "bg-coral/20" : "bg-gold/15"}`}
+        />
+        <div className="relative flex flex-wrap items-end justify-between gap-8">
+          <div>
+            {hasPlan ? (
+              <>
+                <p className={`font-display text-[clamp(3rem,8vw,5.5rem)] leading-[0.9] ${over ? "text-coral" : "text-gradient-gold"}`}>
+                  <CountUp value={Math.abs(remaining)} />
                 </p>
-                <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-ivory/45">spent</p>
-              </div>
-            </ProgressRing>
-            <div className="min-w-0 flex-1">
-              <p className={`font-display text-[clamp(3rem,8vw,5.5rem)] leading-[0.9] ${over ? "text-coral" : "text-gradient-gold"}`}>
-                <CountUp value={Math.abs(remaining)} />
-              </p>
-              <p className="mt-3 text-lg text-ivory/60">{over ? "over budget" : "left"}</p>
-              <div className="mt-6">
-                <ProgressBar percent={percentSpent} tone={over ? "over" : "spend"} label="Budget spent" />
-              </div>
-              <div className="mt-8 grid grid-cols-3 gap-6">
-                <Stat label="Spent">{formatCurrency(spent)}</Stat>
-                <Stat label="Budget">{formatCurrency(budget.budgetedAmount)}</Stat>
-                {perDay !== null ? (
-                  <Stat label="Per day left" tone="mint">
-                    {formatCurrency(perDay)}
-                  </Stat>
-                ) : (
-                  <Stat label="Expenses">{expenseList.length}</Stat>
-                )}
-              </div>
-            </div>
+                <p className="mt-3 text-lg text-ivory/60">
+                  {over ? "over budget" : "left to spend"} this month
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-display text-[clamp(3rem,8vw,5.5rem)] leading-[0.9] text-ivory">
+                  <CountUp value={totalSpent} />
+                </p>
+                <p className="mt-3 text-lg text-ivory/60">spent · set a budget below to track what&apos;s left</p>
+              </>
+            )}
           </div>
-        </Card>
-      )}
-
-      <Card>
-        <SectionTitle>{budget ? "Adjust the budget" : `Set a budget for ${monthLabel}`}</SectionTitle>
-        <SetBudgetForm month={month} monthLabel={monthLabel} defaultAmount={budget?.budgetedAmount} />
+          <div className="grid grid-cols-3 gap-6 sm:gap-10">
+            <Stat label="Spent">{formatCurrency(totalSpent)}</Stat>
+            <Stat label="Budget">{hasPlan ? formatCurrency(totalPlanned) : "—"}</Stat>
+            {perDay !== null ? (
+              <Stat label="Per day left" tone="mint">
+                {formatCurrency(perDay)}
+              </Stat>
+            ) : (
+              <Stat label="Expenses">{expenseList.length}</Stat>
+            )}
+          </div>
+        </div>
+        {hasPlan && (
+          <div className="relative mt-8">
+            <ProgressBar percent={percentSpent} tone={over ? "over" : "spend"} label="Budget spent" />
+          </div>
+        )}
+        <div className="relative mt-10 border-t border-white/[0.07] pt-10">
+          <SpendingBreakdown categories={categories} />
+        </div>
       </Card>
 
-      {budget && (
-        <div className="grid gap-6 lg:grid-cols-5">
-          <Card className="lg:col-span-2">
-            <SectionTitle>Log an expense</SectionTitle>
-            <LogExpenseForm budgetId={budget.id} />
-          </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <SectionTitle>Add an expense</SectionTitle>
+          <LogExpenseForm key={month} month={month} />
+        </Card>
+        <Card>
+          <SectionTitle>{hasPlan ? `Budget for ${monthLabel}` : `Plan ${monthLabel}`}</SectionTitle>
+          <BudgetPlanForm
+            key={month}
+            month={month}
+            planned={Object.fromEntries(categories.map((c) => [c.name, c.planned]))}
+          />
+        </Card>
+      </div>
 
-          <Card className="lg:col-span-3">
-            <SectionTitle>Expenses · {expenseList.length}</SectionTitle>
-            {expenseList.length === 0 ? (
-              <p className="text-ivory/55">No expenses logged yet.</p>
-            ) : (
-              <ul className="divide-y divide-white/[0.07]">
-                {expenseList.map((e) => (
-                  <li key={e.id} className="row-enter flex items-center gap-4 py-3.5">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold/10 text-sm font-bold text-gold ring-1 ring-gold/20">
-                      {e.user.name.slice(0, 1).toUpperCase()}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{e.description}</p>
-                      <p className="text-sm text-ivory/45">
-                        {formatDay(e.date)} · {e.user.name}
-                      </p>
-                    </div>
-                    <span className="font-semibold tabular">{formatCurrency(e.amount)}</span>
-                    <form action={deleteExpense.bind(null, e.id)}>
-                      <ConfirmButton icon label="Delete expense" />
-                    </form>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-      )}
+      <Card>
+        <SectionTitle>Expenses · {expenseList.length}</SectionTitle>
+        {expenseList.length === 0 ? (
+          <p className="text-ivory/55">Nothing logged for {monthLabel} yet.</p>
+        ) : (
+          <ul className="divide-y divide-white/[0.07]">
+            {expenseList.map((e) => (
+              <li key={e.id} className="row-enter flex items-center gap-4 py-3.5">
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: categoryColor(e.category) }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{e.description}</p>
+                  <p className="truncate text-sm text-ivory/45">
+                    {e.category} · {formatDay(e.date)} · {e.user.name}
+                  </p>
+                </div>
+                <span className="font-semibold tabular">{formatCurrency(e.amount)}</span>
+                <form action={deleteExpense.bind(null, e.id)}>
+                  <ConfirmButton icon label="Delete expense" />
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 }

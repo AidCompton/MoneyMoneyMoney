@@ -4,12 +4,11 @@ import { requireSession } from "@/lib/auth";
 import {
   getMeetingWithItems,
   getGoalsWithProgress,
-  getBudgetWithExpenses,
+  getMonthSpending,
   getHouseholdMembers,
   getCarryOverItems,
   currentMonth,
 } from "@/lib/data";
-import { budgetPercentSpent } from "@/lib/calculations";
 import { toggleActionItem, carryOverItem, deleteActionItem, deleteMeeting } from "@/lib/actions/meetings";
 import { formatCurrency } from "@/lib/currency";
 import { formatDay, formatLongDay } from "@/lib/dates";
@@ -18,6 +17,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { PageHeader, SectionTitle } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { SpendingBreakdown } from "@/components/budget/SpendingBreakdown";
 import { NotesEditor } from "@/components/meetings/NotesEditor";
 import { AddActionItemForm } from "@/components/meetings/AddActionItemForm";
 
@@ -36,15 +36,16 @@ export default async function MeetingDetailPage({
 
   const { meeting, items } = result;
 
-  const [goals, { budget, spent, remaining }, members, carryOver] = await Promise.all([
+  const [goals, spending, members, carryOver] = await Promise.all([
     getGoalsWithProgress(household.id),
-    getBudgetWithExpenses(household.id, currentMonth()),
+    getMonthSpending(household.id, currentMonth()),
     getHouseholdMembers(household.id),
     getCarryOverItems(household.id, meeting.id),
   ]);
 
   const doneCount = items.filter((i) => i.done).length;
-  const over = remaining < 0;
+  const { categories, totalPlanned, totalSpent, remaining } = spending;
+  const over = totalPlanned > 0 && remaining < 0;
 
   return (
     <div className="space-y-8">
@@ -92,29 +93,21 @@ export default async function MeetingDetailPage({
               </Link>
             }
           >
-            This month&apos;s groceries
+            This month&apos;s spending
           </SectionTitle>
-          {budget ? (
-            <div className="space-y-3">
-              <p className={`font-display text-4xl ${over ? "text-coral" : "text-ivory"}`}>
-                {formatCurrency(Math.abs(remaining))}{" "}
-                <span className="font-sans text-base font-medium tracking-normal text-ivory/55">
-                  {over ? "over" : "left"}
-                </span>
-              </p>
-              <ProgressBar
-                percent={budgetPercentSpent(budget.budgetedAmount, spent)}
-                size="sm"
-                tone={over ? "over" : "spend"}
-                label="Grocery budget spent"
-              />
-              <p className="text-sm text-ivory/50">
-                {formatCurrency(spent)} spent of {formatCurrency(budget.budgetedAmount)}
-              </p>
-            </div>
-          ) : (
-            <p className="text-ivory/55">No budget set for this month.</p>
-          )}
+          <p className="mb-6 text-sm text-ivory/55">
+            {totalPlanned > 0 ? (
+              <>
+                <span className={`font-semibold ${over ? "text-coral" : "text-ivory"}`}>
+                  {formatCurrency(Math.abs(remaining))} {over ? "over" : "left"}
+                </span>{" "}
+                · {formatCurrency(totalSpent)} spent of {formatCurrency(totalPlanned)}
+              </>
+            ) : (
+              <>{formatCurrency(totalSpent)} spent · no budget set</>
+            )}
+          </p>
+          <SpendingBreakdown categories={categories} size={150} innerRadius={52} compact />
         </Card>
       </section>
 

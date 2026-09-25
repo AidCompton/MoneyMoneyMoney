@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   savingsGoals,
@@ -12,6 +12,7 @@ import {
 } from "@/db/schema";
 import { goalProgressPercent, budgetRemaining } from "@/lib/calculations";
 import { monthISO } from "@/lib/dates";
+import { CATEGORIES, isCategory, type CategoryName } from "@/lib/categories";
 
 export async function getHouseholdMembers(householdId: string) {
   return db.query.users.findMany({
@@ -70,32 +71,48 @@ export function currentMonth() {
   return monthISO(); // YYYY-MM, local time
 }
 
-export async function getBudgetWithExpenses(
-  householdId: string,
-  month: string,
-  category = "Groceries",
-) {
-  const budget = await db.query.monthlyBudgets.findFirst({
-    where: and(
-      eq(monthlyBudgets.householdId, householdId),
-      eq(monthlyBudgets.month, month),
-      eq(monthlyBudgets.category, category),
-    ),
+/**
+ * Everything about one month's spending: each category's planned amount and
+ * what has been spent against it, plus the expenses themselves.
+ */
+export async function getMonthSpending(householdId: string, month: string) {
+  const budgetRows = await db.query.monthlyBudgets.findMany({
+    where: and(eq(monthlyBudgets.householdId, householdId), eq(monthlyBudgets.month, month)),
   });
 
-  if (!budget) {
-    return { budget: null, expenseList: [], spent: 0, remaining: 0 };
-  }
+  const budgetIds = budgetRows.map((b) => b.id);
+  const expenseList = budgetIds.length
+    ? await db.query.expenses.findMany({
+        where: inArray(expenses.budgetId, budgetIds),
+        orderBy: [desc(expenses.date), desc(expenses.createdAt)],
+        with: { user: true, budget: true },
+      })
+    : [];
 
-  const expenseList = await db.query.expenses.findMany({
-    where: eq(expenses.budgetId, budget.id),
-    orderBy: [desc(expenses.date), desc(expenses.createdAt)],
-    with: { user: true },
+  // Anything filed under a category that no longer exists counts as
+  // Miscellaneous rather than disappearing from the totals.
+  const bucket = (category: string): CategoryName => (isCategory(category) ? category : "Miscellaneous");
+
+  const categories = CATEGORIES.map(({ name, color }) => {
+    const planned = budgetRows
+      .filter((b) => bucket(b.category) === name)
+      .reduce((sum, b) => sum + b.budgetedAmount, 0);
+    const spent = expenseList
+      .filter((e) => bucket(e.budget.category) === name)
+      .reduce((sum, e) => sum + e.amount, 0);
+    return { name, color, planned, spent };
   });
 
-  const spent = expenseList.reduce((sum, e) => sum + e.amount, 0);
+  const totalPlanned = categories.reduce((sum, c) => sum + c.planned, 0);
+  const totalSpent = categories.reduce((sum, c) => sum + c.spent, 0);
 
-  return { budget, expenseList, spent, remaining: budgetRemaining(budget.budgetedAmount, spent) };
+  return {
+    categories,
+    expenseList: expenseList.map((e) => ({ ...e, category: bucket(e.budget.category) })),
+    totalPlanned,
+    totalSpent,
+    remaining: budgetRemaining(totalPlanned, totalSpent),
+  };
 }
 
 export async function getMeetings(householdId: string) {

@@ -1,70 +1,100 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { monthlyBudgets, expenses } from "@/db/schema";
 import { requireSession } from "@/lib/auth";
+import { CATEGORIES, isCategory, planField } from "@/lib/categories";
 
-export type ActionState = { error?: string };
+export type ActionState = { error?: string; saved?: boolean };
 
-const CATEGORY = "Groceries";
+const MONTH = /^\d{4}-\d{2}$/;
 
-export async function setBudget(_prev: ActionState, formData: FormData): Promise<ActionState> {
+function revalidateSpending() {
+  revalidatePath("/budget");
+  revalidatePath("/dashboard");
+  revalidatePath("/meetings", "layout");
+}
+
+/** Saves the planned amount for every category in a month at once. */
+export async function setBudgetPlan(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { household } = await requireSession();
 
   const month = String(formData.get("month") ?? "").trim();
-  const budgetedAmount = Number(formData.get("budgetedAmount"));
-
-  if (!/^\d{4}-\d{2}$/.test(month)) {
+  if (!MONTH.test(month)) {
     return { error: "Invalid month." };
   }
-  if (!Number.isFinite(budgetedAmount) || budgetedAmount <= 0) {
-    return { error: "Budget amount must be a positive number." };
+
+  const plan: { category: string; amount: number }[] = [];
+  for (const { name } of CATEGORIES) {
+    const raw = String(formData.get(planField(name)) ?? "").trim();
+    const amount = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return { error: `The amount for ${name} must be zero or more.` };
+    }
+    plan.push({ category: name, amount });
   }
 
-  await db
-    .insert(monthlyBudgets)
-    .values({ householdId: household.id, month, category: CATEGORY, budgetedAmount })
-    .onConflictDoUpdate({
-      target: [monthlyBudgets.householdId, monthlyBudgets.month, monthlyBudgets.category],
-      set: { budgetedAmount },
-    });
+  db.transaction((tx) => {
+    for (const { category, amount } of plan) {
+      tx.insert(monthlyBudgets)
+        .values({ householdId: household.id, month, category, budgetedAmount: amount })
+        .onConflictDoUpdate({
+          target: [monthlyBudgets.householdId, monthlyBudgets.month, monthlyBudgets.category],
+          set: { budgetedAmount: amount },
+        })
+        .run();
+    }
+  });
 
-  revalidatePath("/budget");
-  revalidatePath("/dashboard");
-  return {};
+  revalidateSpending();
+  return { saved: true };
 }
 
 export async function logExpense(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { user, household } = await requireSession();
 
-  const budgetId = String(formData.get("budgetId") ?? "");
+  const month = String(formData.get("month") ?? "").trim();
+  const category = String(formData.get("category") ?? "");
   const amount = Number(formData.get("amount"));
-  const description = String(formData.get("description") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || category;
 
-  const budget = await db.query.monthlyBudgets.findFirst({
-    where: eq(monthlyBudgets.id, budgetId),
-  });
-  if (!budget || budget.householdId !== household.id) {
-    return { error: "That budget could not be found." };
+  if (!MONTH.test(month)) {
+    return { error: "Invalid month." };
   }
-  if (!description) {
-    return { error: "Add a short description." };
+  if (!isCategory(category)) {
+    return { error: "Pick a category." };
   }
   if (!Number.isFinite(amount) || amount <= 0) {
     return { error: "Amount must be a positive number." };
   }
-  if (!date) {
-    return { error: "Pick a date for this expense." };
+  if (!date.startsWith(`${month}-`)) {
+    return { error: "Pick a date in the month you're viewing." };
   }
 
-  await db.insert(expenses).values({ budgetId, userId: user.id, amount, description, date });
+  // A category needs a budget row to hang expenses off. Spending in a
+  // category with nothing planned creates one with a zero plan.
+  await db
+    .insert(monthlyBudgets)
+    .values({ householdId: household.id, month, category, budgetedAmount: 0 })
+    .onConflictDoNothing();
+  const budget = await db.query.monthlyBudgets.findFirst({
+    where: and(
+      eq(monthlyBudgets.householdId, household.id),
+      eq(monthlyBudgets.month, month),
+      eq(monthlyBudgets.category, category),
+    ),
+  });
+  if (!budget) {
+    return { error: "Could not file that expense. Please try again." };
+  }
 
-  revalidatePath("/budget");
-  revalidatePath("/dashboard");
-  return {};
+  await db.insert(expenses).values({ budgetId: budget.id, userId: user.id, amount, description, date });
+
+  revalidateSpending();
+  return { saved: true };
 }
 
 export async function deleteExpense(expenseId: string) {
@@ -78,6 +108,5 @@ export async function deleteExpense(expenseId: string) {
 
   await db.delete(expenses).where(eq(expenses.id, expenseId));
 
-  revalidatePath("/budget");
-  revalidatePath("/dashboard");
+  revalidateSpending();
 }

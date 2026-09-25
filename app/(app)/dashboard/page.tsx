@@ -3,13 +3,13 @@ import { format } from "date-fns";
 import { requireSession } from "@/lib/auth";
 import {
   getGoalsWithProgress,
-  getBudgetWithExpenses,
+  getMonthSpending,
   currentMonth,
   getMeetings,
   getCarryOverItems,
   getHouseholdMembers,
 } from "@/lib/data";
-import { budgetPercentSpent, savingsPace } from "@/lib/calculations";
+import { savingsPace } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/currency";
 import { formatDay, formatLongDay } from "@/lib/dates";
 import { Card } from "@/components/ui/Card";
@@ -19,6 +19,7 @@ import { PageHeader, SectionTitle } from "@/components/ui/PageHeader";
 import { LinkButton, Arrow } from "@/components/ui/LinkButton";
 import { Stat } from "@/components/ui/Stat";
 import { CountUp } from "@/components/motion/CountUp";
+import { PieChart, PieSlice, PieCenter } from "@/components/charts/PieChart";
 
 function greeting(hour: number) {
   if (hour < 12) return "Good morning,";
@@ -28,9 +29,9 @@ function greeting(hour: number) {
 
 export default async function DashboardPage() {
   const { user, household } = await requireSession();
-  const [goals, { budget, spent, remaining }, meetings, openItems, members] = await Promise.all([
+  const [goals, spending, meetings, openItems, members] = await Promise.all([
     getGoalsWithProgress(household.id),
-    getBudgetWithExpenses(household.id, currentMonth()),
+    getMonthSpending(household.id, currentMonth()),
     getMeetings(household.id),
     getCarryOverItems(household.id),
     getHouseholdMembers(household.id),
@@ -40,8 +41,10 @@ export default async function DashboardPage() {
   const [mainGoal, ...otherGoals] = goals;
   const pace = mainGoal ? savingsPace(mainGoal.saved, mainGoal.targetAmount, mainGoal.targetDate) : null;
   const latestMeeting = meetings[0];
-  const spentPercent = budget ? budgetPercentSpent(budget.budgetedAmount, spent) : 0;
-  const over = remaining < 0;
+  const { categories, totalPlanned, totalSpent, remaining } = spending;
+  const hasPlan = totalPlanned > 0;
+  const over = hasPlan && remaining < 0;
+  const pieData = categories.map((c) => ({ label: c.name, value: c.spent, color: c.color }));
 
   return (
     <div className="space-y-8">
@@ -132,7 +135,7 @@ export default async function DashboardPage() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Groceries */}
+        {/* Spending this month */}
         <Card className="flex flex-col">
           <SectionTitle
             action={
@@ -141,30 +144,42 @@ export default async function DashboardPage() {
               </Link>
             }
           >
-            Groceries · {format(now, "MMMM")}
+            Spending · {format(now, "MMMM")}
           </SectionTitle>
-          {budget ? (
+          {hasPlan || totalSpent > 0 ? (
             <div className="flex flex-1 items-center gap-6">
-              <ProgressRing percent={spentPercent} size={116} stroke={10} tone={over ? "over" : "spend"} label="Grocery budget spent">
-                <span className="text-lg font-bold tabular">
-                  <CountUp value={spentPercent} format="percent" />
-                </span>
-              </ProgressRing>
+              <PieChart data={pieData} innerRadius={46} size={132}>
+                {pieData.map((item, index) => (
+                  <PieSlice index={index} key={item.label} />
+                ))}
+                <PieCenter defaultLabel="Spent" />
+              </PieChart>
               <div className="min-w-0">
-                <p className={`text-3xl font-bold tracking-tight ${over ? "text-coral" : "text-ivory"}`}>
-                  <CountUp value={Math.abs(remaining)} />
-                </p>
-                <p className="text-sm text-ivory/55">{over ? "over budget" : "left to spend"}</p>
-                <p className="mt-2 text-xs text-ivory/40">
-                  {formatCurrency(spent)} of {formatCurrency(budget.budgetedAmount)}
-                </p>
+                {hasPlan ? (
+                  <>
+                    <p className={`text-3xl font-bold tracking-tight ${over ? "text-coral" : "text-ivory"}`}>
+                      <CountUp value={Math.abs(remaining)} />
+                    </p>
+                    <p className="text-sm text-ivory/55">{over ? "over budget" : "left to spend"}</p>
+                    <p className="mt-2 text-xs text-ivory/40">
+                      {formatCurrency(totalSpent)} of {formatCurrency(totalPlanned)}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-3xl font-bold tracking-tight">
+                      <CountUp value={totalSpent} />
+                    </p>
+                    <p className="text-sm text-ivory/55">spent, no budget set</p>
+                  </>
+                )}
               </div>
             </div>
           ) : (
             <div className="flex flex-1 flex-col justify-between gap-6">
-              <p className="text-ivory/60">No grocery budget for this month yet.</p>
+              <p className="text-ivory/60">No budget or spending for this month yet.</p>
               <LinkButton href="/budget" variant="secondary" className="self-start">
-                Set this month&apos;s budget
+                Plan this month
               </LinkButton>
             </div>
           )}

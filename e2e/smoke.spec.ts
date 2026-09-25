@@ -58,29 +58,41 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
     "10",
   );
 
-  // Grocery budget
+  // Monthly budget, split across categories
   await page.getByRole("link", { name: "Budget" }).click();
-  await page.getByLabel(/Grocery budget for/).fill("6000");
-  await page.getByRole("button", { name: "Set budget" }).click();
-  await expect(page.getByLabel("Amount (R)")).toBeVisible();
-  for (const [amount, description] of [
-    ["450", "Checkers run"],
-    ["99", "Mistake"],
-  ]) {
+  await page.getByRole("spinbutton", { name: "Food & Toiletries" }).fill("4000");
+  await page.getByRole("spinbutton", { name: "Cats" }).fill("800");
+  await page.getByRole("spinbutton", { name: "Gas" }).fill("1200");
+  await page.getByRole("button", { name: "Save budget" }).click();
+  await expect(page.getByText("✓ Saved")).toBeVisible();
+
+  const addExpense = async (category: string, amount: string, description: string) => {
+    const chip = page.getByRole("radio", { name: category });
+    await page.locator("label").filter({ has: chip }).click(); // the visible chip
+    await expect(chip).toBeChecked();
     await page.getByLabel("Amount (R)").fill(amount);
-    await page.getByLabel("Description").fill(description);
-    await page.getByRole("button", { name: "Log expense" }).click();
-    await expect(page.getByText(description)).toBeVisible();
-  }
+    await page.getByLabel("What was it? (optional)").fill(description);
+    await page.getByRole("button", { name: "Add expense" }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: description })).toBeVisible();
+  };
+  await addExpense("Food & Toiletries", "450", "Checkers run");
+  await addExpense("Cats", "300", "Cat food");
+  await addExpense("Gifts", "99", "Mistake");
+
+  // The pie tallies each category; the total sits in its centre.
+  const pie = page.getByRole("img", { name: /Food & Toiletries R 450, Cats R 300, Gifts R 99/ });
+  await expect(pie).toBeVisible();
+  await expect(page.getByRole("row", { name: /Cats/ })).toContainText("of R 800");
 
   // Deleting an expense takes two clicks.
   const mistake = page.getByRole("listitem").filter({ hasText: "Mistake" });
   await mistake.getByRole("button", { name: "Delete expense" }).click();
   await mistake.getByRole("button", { name: "Confirm: Delete expense" }).click();
-  await expect(page.getByText("Mistake")).toHaveCount(0);
-  await expect(page.getByRole("progressbar", { name: "Budget spent" }).first()).toHaveAttribute(
+  await expect(mistake).toHaveCount(0);
+  await expect(page.getByRole("img", { name: "Food & Toiletries R 450, Cats R 300" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Budget spent" })).toHaveAttribute(
     "aria-valuenow",
-    "8", // R450 of R6 000
+    "13", // R750 of R6 000
   );
 
   // Money meeting

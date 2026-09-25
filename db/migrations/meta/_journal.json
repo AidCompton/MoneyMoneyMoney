@@ -8,6 +8,13 @@
       "when": 1790345865182,
       "tag": "0000_gifted_victor_mancha",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790351862024,
+      "tag": "0001_budget_categories",
+      "breakpoints": true
     }
   ]
 }

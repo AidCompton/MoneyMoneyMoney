@@ -1,7 +1,7 @@
 # MoneyMoneyMoney
 
-A local household money planner: savings goals, a monthly grocery budget,
-and a weekly Money Meeting agenda — for the two of you, running entirely on
+A local household money planner: savings goals, a monthly budget split
+across spending categories, and a weekly Money Meeting agenda — for the two of you, running entirely on
 your own machine.
 
 Nothing here talks to the internet at runtime. Data lives in a single
@@ -38,6 +38,16 @@ npm run start       # -> http://<this-machine's-LAN-IP>:3000
 Lost the code? It's always on the **Household** page (and on the overview
 until the second person joins).
 
+## The monthly budget
+
+Each month's budget is split across eight categories: Food & Toiletries,
+Cats, Gas, Fun activity, House, Miscellaneous, IOU and Gifts. Set how much
+you plan to spend on each, then add expenses to a category as they happen.
+The Budget page adds them up per category and shows the split as a donut
+chart. Hover a slice or a row to see that category's amount and share.
+
+The categories and their colours are defined in `lib/categories.ts`.
+
 ## Backing up your data
 
 Since everything lives in one local file, back it up occasionally:
@@ -49,7 +59,7 @@ npm run db:backup   # copies data/app.db into data/backups/<timestamp>.db
 ## Testing
 
 ```bash
-npm run test        # unit tests (Vitest) for the budget/goal math
+npm run test        # unit tests (Vitest) for the budget/goal math, dates and currency
 npm run test:e2e    # a full browser smoke test (Playwright) of the core flows
 ```
 

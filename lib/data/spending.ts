@@ -135,6 +135,7 @@ export async function getSpending({
       storeName: e.store?.name ?? null,
       userName: e.user.name,
       userId: e.userId,
+      receiptId: e.receiptId,
     })),
     facets: explore.facets,
     activeFilters: explore.active,

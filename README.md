@@ -64,6 +64,10 @@ phone):
     change anything there.
 - **Household**: the join code for your partner, and **Lists** (below).
 
+The gold **+** in the top bar opens **Quick add** (`/add`): scan a receipt
+or type an expense in, for the shared budget or your own
+(`/add?for=personal`).
+
 ## Typing it once
 
 Sub-categories, stores, personal categories, income sources, savings
@@ -102,6 +106,54 @@ dinner. Planning a meal you've prepped before copies its ingredients across.
 
 Tick items off while shopping, then use **Log the shop** to add the till slip
 total to the shared budget as a Food & Toiletries expense.
+
+## Scanning receipts
+
+On **Quick add**, **Take a photo** (or **Choose a photo**) of a till slip.
+The receipt is read on the computer running the app. Nothing is sent
+anywhere, and the text-reading data ships with the app in `node_modules`.
+In a second or two you get the store, date, total and every line item, each
+with a category.
+
+Anything it isn't sure of is listed under **things to check**, each with
+the part of the photo it came from:
+
+- a store it doesn't know ("Is the store …?"), or no store at all
+- a missing date or total
+- a line that was hard to read, or too blurry to price
+- items that don't add up to the total. You can add the difference as
+  "other items" or a discount, or use the items' sum as the total.
+
+**Save** stays off until every check is done. Saving adds one expense per
+category on the receipt to the budget you picked (shared or personal). Each
+expense keeps its line items, which you can see from the receipt icon under
+**Where it went** or at `/receipts/<id>`.
+
+Next time the same line turns up, its name and category are filled in from
+last time. Item prices also update the remembered price of matching
+groceries. Deleting a receipt deletes the expenses it created.
+
+Receipt photos are saved in `data/receipts/`. They aren't in the database
+backup, so copy that folder too if you want to keep them.
+
+## Back Tap: double-tap your iPhone to add an expense
+
+iPhones can run a Shortcut when you double-tap the back of the phone. Point
+one at Quick add:
+
+1. On the iPhone, open the **Shortcuts** app, tap **+**, and add the
+   **Open URLs** action (search for "URL").
+2. Set the URL to your app's address plus `/add`, for example
+   `http://192.168.1.23:3000/add` (use `/add?for=personal` to start on your
+   personal budget). The address is on the Household page.
+3. Name the shortcut "Add expense" and tap **Done**.
+4. Open **Settings → Accessibility → Touch → Back Tap → Double Tap** and
+   choose **Add expense**.
+
+Double-tapping the back of the phone now opens Quick add in Safari. Sign in
+once in Safari, which keeps its own sign-in separate from the home-screen
+app. As with the rest of the app, the phone has to be on your home Wi-Fi
+with the computer running.
 
 ## Backing up your data
 
@@ -149,14 +201,15 @@ Things to know:
 
 ```bash
 npm run test        # unit tests (Vitest): budget, flow and grocery maths, filters, dates, currency
-npm run test:e2e    # browser tests (Playwright) of the shared, personal and grocery flows
+npm run test:e2e    # browser tests (Playwright) of the shared, personal, grocery and receipt flows
 ```
 
 ## Stack
 
 Next.js (App Router) + TypeScript, SQLite via Drizzle ORM, session auth via
-encrypted cookies (iron-session), Tailwind CSS, GSAP for animation, and
-Recharts for the savings goal chart. See the code under `app/`, `lib/`, and
+encrypted cookies (iron-session), Tailwind CSS, GSAP for animation,
+Recharts for the savings goal chart, and Tesseract (tesseract.js) with sharp
+for reading receipts on the computer itself. See the code under `app/`, `lib/`, and
 `db/` for the route, business-logic, and schema layout.
 
 ## Design

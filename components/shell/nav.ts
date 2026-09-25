@@ -1,13 +1,14 @@
 // Where everything lives. The app has four spaces: the combined overview,
 // shared money, each person's personal money, and household settings.
 
-export type Space = "overview" | "shared" | "personal" | "household";
+export type Space = "overview" | "shared" | "personal" | "household" | "quick";
 
 export type NavLink = { href: string; label: string; key: string };
 
 export function spaceOf(pathname: string): Space {
   if (pathname.startsWith("/personal")) return "personal";
   if (pathname.startsWith("/household")) return "household";
+  if (pathname.startsWith("/add")) return "quick"; // Quick add sits outside the tabs
   if (pathname.startsWith("/dashboard")) return "overview";
   return "shared";
 }

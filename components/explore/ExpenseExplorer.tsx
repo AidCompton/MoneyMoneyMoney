@@ -132,6 +132,19 @@ export function ExpenseExplorer({
                     {spending.scope === "shared" && ` · ${e.userName}`}
                   </p>
                 </div>
+                {e.receiptId && (
+                  <Link
+                    href={`/receipts/${e.receiptId}`}
+                    aria-label="View receipt"
+                    title="View receipt"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ivory/40 transition-colors hover:bg-white/[0.07] hover:text-gold"
+                  >
+                    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+                      <path d="M5 2.5h10v15l-2-1.2-1.7 1.2-1.6-1.2-1.7 1.2L6.3 16.3 5 17.5z" strokeLinejoin="round" />
+                      <path d="M7.5 6.5h5M7.5 9.5h5M7.5 12.5h3" strokeLinecap="round" />
+                    </svg>
+                  </Link>
+                )}
                 <span className="font-semibold tabular">{formatCurrency(e.amount)}</span>
                 {canEdit && (
                   <form action={deleteExpense.bind(null, e.id)}>

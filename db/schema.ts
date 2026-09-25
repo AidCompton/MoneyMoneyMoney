@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, uniqueIndex, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, uniqueIndex, index, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 
 const id = () =>
   text("id")
@@ -133,6 +133,8 @@ export const expenses = sqliteTable(
       onDelete: "set null",
     }),
     storeId: text("store_id").references(() => labels.id, { onDelete: "set null" }),
+    /** Set when the expense came from a scanned receipt. */
+    receiptId: text("receipt_id").references((): AnySQLiteColumn => receipts.id, { onDelete: "set null" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -305,6 +307,63 @@ export const groceryListItems = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// Scanned receipts
+// ---------------------------------------------------------------------------
+
+/**
+ * A scanned till slip. Saving it creates one expense per category it covers;
+ * its lines are kept as receipt items. The photo lives in data/receipts.
+ */
+export const receipts = sqliteTable("receipts", {
+  id: id(),
+  householdId: householdId(),
+  ownerUserId: text("owner_user_id").references(() => users.id, { onDelete: "cascade" }),
+  storeId: text("store_id").references(() => labels.id, { onDelete: "set null" }),
+  date: text("date").notNull(),
+  total: real("total").notNull(),
+  hasImage: integer("has_image", { mode: "boolean" }).notNull().default(false),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: createdAt(),
+});
+
+export const receiptItems = sqliteTable("receipt_items", {
+  id: id(),
+  receiptId: text("receipt_id")
+    .notNull()
+    .references(() => receipts.id, { onDelete: "cascade" }),
+  expenseId: text("expense_id").references(() => expenses.id, { onDelete: "set null" }),
+  raw: text("raw").notNull(),
+  name: text("name").notNull(),
+  quantity: real("quantity").notNull().default(1),
+  unitPrice: real("unit_price"),
+  lineTotal: real("line_total").notNull(),
+  categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+  subcategoryId: text("subcategory_id").references(() => subcategories.id, { onDelete: "set null" }),
+  position: integer("position").notNull().default(0),
+});
+
+/**
+ * What a receipt line turned out to be, so the next receipt with the same
+ * line fills itself in ("CLVR FRSH MLK 2L" → Milk, Food & Toiletries).
+ */
+export const receiptAliases = sqliteTable(
+  "receipt_aliases",
+  {
+    id: id(),
+    householdId: householdId(),
+    scope: text("scope", { enum: ["shared", "personal"] }).notNull(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+    subcategoryId: text("subcategory_id").references(() => subcategories.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("receipt_aliases_household_scope_key").on(t.householdId, t.scope, t.key)],
+);
+
+// ---------------------------------------------------------------------------
 // Money Meetings
 // ---------------------------------------------------------------------------
 
@@ -362,6 +421,33 @@ export const budgetLinesRelations = relations(budgetLines, ({ one }) => ({
   category: one(categories, {
     fields: [budgetLines.categoryId],
     references: [categories.id],
+  }),
+}));
+
+export const receiptsRelations = relations(receipts, ({ one, many }) => ({
+  store: one(labels, {
+    fields: [receipts.storeId],
+    references: [labels.id],
+  }),
+  user: one(users, {
+    fields: [receipts.userId],
+    references: [users.id],
+  }),
+  items: many(receiptItems),
+}));
+
+export const receiptItemsRelations = relations(receiptItems, ({ one }) => ({
+  receipt: one(receipts, {
+    fields: [receiptItems.receiptId],
+    references: [receipts.id],
+  }),
+  category: one(categories, {
+    fields: [receiptItems.categoryId],
+    references: [categories.id],
+  }),
+  subcategory: one(subcategories, {
+    fields: [receiptItems.subcategoryId],
+    references: [subcategories.id],
   }),
 }));
 

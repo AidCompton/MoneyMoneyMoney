@@ -22,7 +22,11 @@ export function MainNav({ userId, compact = false }: { userId: string; compact?:
     () => {
       const move = (animate: boolean) => {
         const active = nav.current?.querySelector<HTMLElement>("[data-active='true']");
-        if (!indicator.current || !active) return;
+        if (!indicator.current) return;
+        if (!active) {
+          gsap.to(indicator.current, { autoAlpha: 0, duration: 0.3 });
+          return;
+        }
         const props = { x: active.offsetLeft, width: active.offsetWidth, autoAlpha: 1 };
         if (animate) gsap.to(indicator.current, { ...props, duration: 0.7, ease: "expo.out" });
         else gsap.set(indicator.current, props);

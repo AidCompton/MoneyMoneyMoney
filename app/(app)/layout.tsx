@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { logout } from "@/lib/actions/auth";
 import { getHouseholdMembers } from "@/lib/data";
@@ -19,6 +20,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <MainNav userId={user.id} />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
+            <Link
+              href="/add"
+              aria-label="Quick add an expense"
+              title="Quick add"
+              className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-gold to-sunrise text-xl font-semibold leading-none text-night shadow-[0_6px_20px_-6px_rgb(247_195_92/0.8)] transition-transform duration-300 hover:scale-110"
+            >
+              +
+            </Link>
             <span
               className="hidden h-9 w-9 place-items-center rounded-full bg-white/10 text-sm font-bold text-gold ring-1 ring-white/15 lg:grid"
               title={`Signed in as ${user.name}`}

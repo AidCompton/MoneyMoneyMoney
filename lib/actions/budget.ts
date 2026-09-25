@@ -66,3 +66,18 @@ export async function logExpense(_prev: ActionState, formData: FormData): Promis
   revalidatePath("/dashboard");
   return {};
 }
+
+export async function deleteExpense(expenseId: string) {
+  const { household } = await requireSession();
+
+  const expense = await db.query.expenses.findFirst({
+    where: eq(expenses.id, expenseId),
+    with: { budget: true },
+  });
+  if (!expense || expense.budget.householdId !== household.id) return;
+
+  await db.delete(expenses).where(eq(expenses.id, expenseId));
+
+  revalidatePath("/budget");
+  revalidatePath("/dashboard");
+}

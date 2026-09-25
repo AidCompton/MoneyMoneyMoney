@@ -11,9 +11,13 @@ import {
   users,
 } from "@/db/schema";
 import { goalProgressPercent, budgetRemaining } from "@/lib/calculations";
+import { monthISO } from "@/lib/dates";
 
 export async function getHouseholdMembers(householdId: string) {
-  return db.query.users.findMany({ where: eq(users.householdId, householdId) });
+  return db.query.users.findMany({
+    where: eq(users.householdId, householdId),
+    orderBy: (user, { asc }) => [asc(user.createdAt)],
+  });
 }
 
 export async function getGoalsWithProgress(householdId: string) {
@@ -63,7 +67,7 @@ export async function getGoalWithContributions(goalId: string) {
 }
 
 export function currentMonth() {
-  return new Date().toISOString().slice(0, 7); // YYYY-MM
+  return monthISO(); // YYYY-MM, local time
 }
 
 export async function getBudgetWithExpenses(

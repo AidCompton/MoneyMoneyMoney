@@ -35,6 +35,9 @@ npm run start       # -> http://<this-machine's-LAN-IP>:3000
 3. You're both now signed in separately, sharing the same goals, budget,
    and meeting history.
 
+Lost the code? It's always on the **Household** page (and on the overview
+until the second person joins).
+
 ## Backing up your data
 
 Since everything lives in one local file, back it up occasionally:
@@ -53,6 +56,19 @@ npm run test:e2e    # a full browser smoke test (Playwright) of the core flows
 ## Stack
 
 Next.js (App Router) + TypeScript, SQLite via Drizzle ORM, session auth via
-encrypted cookies (iron-session), Tailwind CSS, and Recharts for the
-savings goal chart. See the code under `app/`, `lib/`, and `db/` for the
-route, business-logic, and schema layout.
+encrypted cookies (iron-session), Tailwind CSS, GSAP for animation, and
+Recharts for the savings goal chart. See the code under `app/`, `lib/`, and
+`db/` for the route, business-logic, and schema layout.
+
+## Design
+
+A dark evergreen palette with mint and gold accents, frosted-glass panels
+over a slowly drifting aurora. The type is Bricolage Grotesque for text and
+numbers, with Instrument Serif italics as accents. Both fonts are stored in
+`app/fonts/` (SIL Open Font License, see `app/fonts/OFL.txt`), so the app
+never loads fonts from the internet.
+
+Motion is in `components/motion/`: headings reveal line by line, panels
+fade in as you scroll, amounts count up, and progress bars and rings fill
+in. If your device has "reduce motion" turned on, everything appears
+straight away with no animation.

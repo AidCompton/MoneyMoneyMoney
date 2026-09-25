@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { setBudget, type ActionState } from "@/lib/actions/budget";
-import { Input } from "@/components/ui/Input";
+import { Input, Label } from "@/components/ui/Input";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { FormError } from "@/components/ui/FormError";
 
@@ -10,9 +10,11 @@ const initialState: ActionState = {};
 
 export function SetBudgetForm({
   month,
+  monthLabel,
   defaultAmount,
 }: {
   month: string;
+  monthLabel: string;
   defaultAmount?: number;
 }) {
   const [state, formAction] = useActionState(setBudget, initialState);
@@ -20,10 +22,8 @@ export function SetBudgetForm({
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-4">
       <input type="hidden" name="month" value={month} />
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="budgetedAmount">
-          Grocery budget for {month} (R)
-        </label>
+      <div className="min-w-0 flex-1 basis-56">
+        <Label htmlFor="budgetedAmount">Grocery budget for {monthLabel} (R)</Label>
         <Input
           id="budgetedAmount"
           name="budgetedAmount"
@@ -34,12 +34,10 @@ export function SetBudgetForm({
           required
         />
       </div>
-      <SubmitButton pendingText="Saving…">
+      <SubmitButton pendingText="Saving…" variant={defaultAmount ? "secondary" : "primary"}>
         {defaultAmount ? "Update budget" : "Set budget"}
       </SubmitButton>
-      <div className="basis-full">
-        <FormError message={state.error} />
-      </div>
+      <FormError message={state.error} className="basis-full" />
     </form>
   );
 }

@@ -1,4 +1,12 @@
-PRAGMA foreign_keys=OFF;--> statement-breakpoint
+-- Savings accounts may now be joint (no owner). SQLite can't relax NOT NULL
+-- in place, so the table is rebuilt.
+--
+-- The migration runs inside a transaction, where PRAGMA foreign_keys=OFF is
+-- ignored, so dropping savings_accounts would cascade-delete every savings
+-- transaction. They're set aside first and put back after the rebuild.
+-- Safe to run more than once.
+CREATE TABLE `__keep_savings_transactions` AS SELECT * FROM `savings_transactions`;
+--> statement-breakpoint
 CREATE TABLE `__new_savings_accounts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`household_id` text NOT NULL,
@@ -14,7 +22,12 @@ CREATE TABLE `__new_savings_accounts` (
 	FOREIGN KEY (`owner_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-INSERT INTO `__new_savings_accounts`("id", "household_id", "owner_user_id", "name", "institution", "target_amount", "opening_balance", "opening_date", "archived", "created_at") SELECT "id", "household_id", "owner_user_id", "name", "institution", "target_amount", "opening_balance", "opening_date", "archived", "created_at" FROM `savings_accounts`;--> statement-breakpoint
-DROP TABLE `savings_accounts`;--> statement-breakpoint
-ALTER TABLE `__new_savings_accounts` RENAME TO `savings_accounts`;--> statement-breakpoint
-PRAGMA foreign_keys=ON;
+INSERT INTO `__new_savings_accounts`("id", "household_id", "owner_user_id", "name", "institution", "target_amount", "opening_balance", "opening_date", "archived", "created_at") SELECT "id", "household_id", "owner_user_id", "name", "institution", "target_amount", "opening_balance", "opening_date", "archived", "created_at" FROM `savings_accounts`;
+--> statement-breakpoint
+DROP TABLE `savings_accounts`;
+--> statement-breakpoint
+ALTER TABLE `__new_savings_accounts` RENAME TO `savings_accounts`;
+--> statement-breakpoint
+INSERT OR IGNORE INTO `savings_transactions` SELECT * FROM `__keep_savings_transactions`;
+--> statement-breakpoint
+DROP TABLE `__keep_savings_transactions`;

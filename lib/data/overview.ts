@@ -6,7 +6,7 @@ import { householdFlow } from "@/lib/calculations";
 import { monthPattern } from "@/lib/dates";
 import { getGoalsWithProgress, getHouseholdMembers } from "./core";
 import { getContributionsForMonth, getPersonalTotals } from "./personal";
-import { totalSavingsBalance } from "./savings";
+import { totalJointSavingsBalance, totalSavingsBalance } from "./savings";
 import { getSpending } from "./spending";
 
 /** Shared and personal money for the month, added up for the whole household. */
@@ -46,6 +46,7 @@ export async function getHouseholdOverview(householdId: string, month: string) {
 
   const goalsSaved = goals.reduce((total, g) => total + g.saved, 0);
   const personalSavings = sum((p) => p.savingsBalance);
+  const jointSavings = totalJointSavingsBalance(householdId);
 
   return {
     shared,
@@ -56,6 +57,7 @@ export async function getHouseholdOverview(householdId: string, month: string) {
     contributed,
     goalsSaved,
     personalSavings,
-    totalSaved: goalsSaved + personalSavings,
+    jointSavings,
+    totalSaved: goalsSaved + personalSavings + jointSavings,
   };
 }

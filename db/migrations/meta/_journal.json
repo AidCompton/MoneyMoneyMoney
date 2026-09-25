@@ -19,8 +19,15 @@
     {
       "idx": 2,
       "version": "6",
-      "when": 1790500000000,
+      "when": 1790358000000,
       "tag": "0002_personal_lists_groceries",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790368916406,
+      "tag": "0003_joint_savings_accounts",
       "breakpoints": true
     }
   ]

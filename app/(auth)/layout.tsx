@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { db } from "@/db";
+import { users } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { Logo } from "@/components/shell/Logo";
 import { Ticker } from "@/components/motion/Ticker";
@@ -6,7 +9,10 @@ import { PageReveal } from "@/components/motion/PageReveal";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  if (session.userId) {
+  // Check the session still points at a real user, not just that the cookie
+  // is set - otherwise a stale cookie (e.g. after the account was removed)
+  // would bounce you straight back here from /dashboard, forever.
+  if (session.userId && (await db.query.users.findFirst({ where: eq(users.id, session.userId) }))) {
     redirect("/dashboard");
   }
 

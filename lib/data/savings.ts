@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { savingsAccounts, savingsTransactions } from "@/db/schema";
 import { goalProgressPercent } from "@/lib/calculations";
@@ -41,6 +41,7 @@ function summarise(account: Account, txs: Tx[], month: string) {
     openingBalance: account.openingBalance,
     openingDate: account.openingDate,
     ownerUserId: account.ownerUserId,
+    joint: account.ownerUserId === null,
     balance,
     thisMonth,
     percent: account.targetAmount ? goalProgressPercent(balance, account.targetAmount) : null,
@@ -48,11 +49,18 @@ function summarise(account: Account, txs: Tx[], month: string) {
   };
 }
 
-export async function getSavingsAccounts(ownerUserId: string, month: string) {
+/** A person's own accounts, plus their household's joint accounts. */
+export async function getSavingsAccounts(householdId: string, ownerUserId: string, month: string) {
   const accounts = db
     .select()
     .from(savingsAccounts)
-    .where(and(eq(savingsAccounts.ownerUserId, ownerUserId), eq(savingsAccounts.archived, false)))
+    .where(
+      and(
+        eq(savingsAccounts.householdId, householdId),
+        or(eq(savingsAccounts.ownerUserId, ownerUserId), isNull(savingsAccounts.ownerUserId)),
+        eq(savingsAccounts.archived, false),
+      ),
+    )
     .orderBy(asc(savingsAccounts.createdAt))
     .all();
   const ids = accounts.map((a) => a.id);
@@ -70,12 +78,22 @@ export async function getSavingsAccounts(ownerUserId: string, month: string) {
 
 export type SavingsAccountSummary = Awaited<ReturnType<typeof getSavingsAccounts>>[number];
 
-/** A month's deposits and withdrawals across someone's accounts, cross-filterable. */
-export async function getSavingsActivity(ownerUserId: string, month: string, filters: SavingsFilters = {}) {
+/** A month's deposits and withdrawals across someone's own and joint accounts, cross-filterable. */
+export async function getSavingsActivity(
+  householdId: string,
+  ownerUserId: string,
+  month: string,
+  filters: SavingsFilters = {},
+) {
   const accounts = db
     .select({ id: savingsAccounts.id })
     .from(savingsAccounts)
-    .where(eq(savingsAccounts.ownerUserId, ownerUserId))
+    .where(
+      and(
+        eq(savingsAccounts.householdId, householdId),
+        or(eq(savingsAccounts.ownerUserId, ownerUserId), isNull(savingsAccounts.ownerUserId)),
+      ),
+    )
     .all();
   const ids = accounts.map((a) => a.id);
   const rows = ids.length
@@ -149,6 +167,27 @@ export function totalSavingsBalance(ownerUserId: string) {
     .select()
     .from(savingsAccounts)
     .where(and(eq(savingsAccounts.ownerUserId, ownerUserId), eq(savingsAccounts.archived, false)))
+    .all();
+  if (!accounts.length) return 0;
+  const txs = db
+    .select({ amount: savingsTransactions.amount })
+    .from(savingsTransactions)
+    .where(
+      inArray(
+        savingsTransactions.accountId,
+        accounts.map((a) => a.id),
+      ),
+    )
+    .all();
+  return accounts.reduce((sum, a) => sum + a.openingBalance, 0) + txs.reduce((sum, t) => sum + t.amount, 0);
+}
+
+/** Current total across the household's joint accounts (counted once, not per member). */
+export function totalJointSavingsBalance(householdId: string) {
+  const accounts = db
+    .select()
+    .from(savingsAccounts)
+    .where(and(eq(savingsAccounts.householdId, householdId), isNull(savingsAccounts.ownerUserId), eq(savingsAccounts.archived, false)))
     .all();
   if (!accounts.length) return 0;
   const txs = db

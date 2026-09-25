@@ -5,10 +5,10 @@ import path from "node:path";
 import fs from "node:fs";
 import * as schema from "./schema";
 
-const dataDir = path.join(/* turbopackIgnore: true */ process.cwd(), process.env.DATABASE_DIR ?? "data");
+export const dataDir = path.join(/* turbopackIgnore: true */ process.cwd(), process.env.DATABASE_DIR ?? "data");
 fs.mkdirSync(dataDir, { recursive: true });
 
-const sqlite = new Database(path.join(dataDir, "app.db"));
+export const sqlite = new Database(path.join(dataDir, "app.db"));
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 

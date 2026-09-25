@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <>
-      <header className="sticky top-0 z-40 px-3 pt-3 sm:px-6 sm:pt-5">
+      <header className="sticky top-0 z-40 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 sm:pt-5">
         <div className="glass-strong mx-auto flex max-w-6xl items-center gap-3 rounded-full py-2 pl-3 pr-2 sm:gap-4 sm:pl-4">
           <Logo />
           <div className="mx-auto hidden min-w-0 md:block">
@@ -35,11 +35,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
       <SubNav members={members} userId={user.id} />
       {/* On phones the spaces move to a thumb-reachable bar at the bottom. */}
-      <div className="glass-strong fixed inset-x-3 bottom-3 z-40 rounded-full md:hidden">
+      <div className="glass-strong fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 rounded-full md:hidden">
         <MainNav userId={user.id} compact />
       </div>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-8 sm:px-6 sm:pt-12">{children}</main>
-      <footer className="overflow-hidden px-4 pb-8 sm:px-6">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-8 sm:px-6 sm:pt-12">{children}</main>
+      <footer className="overflow-hidden px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:pb-8">
         <div className="mx-auto max-w-6xl border-t border-white/10 pt-8">
           <p className="font-display select-none text-[clamp(2.5rem,10.5vw,9.5rem)] leading-none text-white/[0.04]">
             Money<span className="font-accent">Money</span>Money

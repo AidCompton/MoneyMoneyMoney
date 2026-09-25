@@ -12,7 +12,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="px-6 pt-6 sm:px-10 sm:pt-8">
+      <header className="px-6 pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-10 sm:pt-8">
         <Logo href="/login" />
       </header>
       <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 py-12 sm:px-10 lg:grid-cols-[1.15fr_1fr] lg:gap-20">

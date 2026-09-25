@@ -105,11 +105,45 @@ total to the shared budget as a Food & Toiletries expense.
 
 ## Backing up your data
 
-Since everything lives in one local file, back it up occasionally:
+Everything lives in one file, `data/app.db`. On the **Household** page,
+**Back up now** saves a copy to `data/backups/`, and **Download** saves one
+to whatever device you're using. Keep a downloaded copy somewhere other
+than the computer running the app. The same backup is available from the
+terminal:
 
 ```bash
-npm run db:backup   # copies data/app.db into data/backups/<timestamp>.db
+npm run db:backup
 ```
+
+Backups use SQLite's own backup API, so they're safe while the app is
+running and include your latest changes.
+
+## Using it on your iPhones
+
+The app runs on one computer at home. Your phones open it over your home
+Wi-Fi and can be added to the home screen, where it opens full screen with
+its own icon.
+
+1. On the computer: `npm run build`, then `npm run start`. Leave it running.
+2. Open **Household** on the computer. The **Use it on your phones** card
+   shows this computer's address (something like `http://192.168.1.23:3000`)
+   and a QR code.
+3. On each iPhone, on the same Wi-Fi, point the Camera at the QR code (or
+   type the address into Safari) and sign in.
+4. Tap **Share → Add to Home Screen → Add**. The app appears as "Money".
+
+After adding it to the home screen, open the app from there and sign in once
+more: iOS keeps home-screen apps separate from Safari.
+
+Things to know:
+
+- The phones reach the app only while that computer is on, awake and running
+  it, and only when they're on your home Wi-Fi.
+- If the address stops working, the computer's network address has probably
+  changed. Try the `.local` name shown on the Household page, or reserve a
+  fixed address for the computer in your router's settings.
+- The first time the phones connect, the computer may ask whether to allow
+  incoming connections. Allow it.
 
 ## Testing
 

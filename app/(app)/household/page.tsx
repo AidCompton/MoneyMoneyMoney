@@ -3,10 +3,16 @@ import { getHouseholdMembers } from "@/lib/data";
 import { Card } from "@/components/ui/Card";
 import { PageHeader, SectionTitle } from "@/components/ui/PageHeader";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { headers } from "next/headers";
+import { BackupPanel } from "@/components/household/BackupPanel";
+import { PhoneSetup } from "@/components/household/PhoneSetup";
+import { lanAddresses } from "@/lib/network";
+import { listBackups } from "@/lib/backup";
 
 export default async function HouseholdPage() {
   const { household, user } = await requireSession();
   const members = await getHouseholdMembers(household.id);
+  const port = ((await headers()).get("host") ?? "").split(":")[1] ?? "3000";
 
   return (
     <div className="space-y-10">
@@ -55,12 +61,18 @@ export default async function HouseholdPage() {
       </div>
 
       <Card>
+        <SectionTitle>Use it on your phones</SectionTitle>
+        <PhoneSetup {...lanAddresses(port)} />
+      </Card>
+
+      <Card>
         <SectionTitle>Your data</SectionTitle>
-        <p className="max-w-2xl text-ivory/60">
-          Everything is stored in one file, <code className="rounded bg-white/10 px-1.5 py-0.5 text-sm text-ivory">data/app.db</code>,
-          on the computer running this app. Nothing is sent anywhere. Back it up now and then by
-          running <code className="rounded bg-white/10 px-1.5 py-0.5 text-sm text-ivory">npm run db:backup</code>.
+        <p className="mb-6 max-w-2xl text-ivory/60">
+          Everything lives in one file on the computer running this app, and nothing is sent anywhere. Back it up now
+          and then, and download a copy to keep somewhere else (a backup on the same computer won&apos;t help if that
+          computer is lost).
         </p>
+        <BackupPanel backups={listBackups()} />
       </Card>
     </div>
   );

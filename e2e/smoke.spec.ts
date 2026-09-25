@@ -114,6 +114,9 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
 
   // Partner joins with the code shown on the household page.
   await page.getByRole("link", { name: "Household" }).first().click();
+  await page.getByRole("button", { name: "Back up now" }).click();
+  await expect(page.getByText("✓ Saved a backup")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download" }).first()).toBeVisible();
   const joinCode = (await page.getByLabel("Join code").textContent())?.trim() ?? "";
   expect(joinCode).toMatch(/^[A-Z0-9]{6}$/);
 

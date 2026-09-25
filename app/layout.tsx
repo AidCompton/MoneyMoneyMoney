@@ -24,12 +24,19 @@ const instrumentSerif = localFont({
 
 export const metadata: Metadata = {
   title: "MoneyMoneyMoney",
-  description: "Your household's savings goals, grocery budget, and weekly Money Meeting.",
+  description: "Your household's budgets, savings, groceries and weekly Money Meeting.",
+  // Added to an iPhone home screen, it opens full screen under the name "Money".
+  appleWebApp: { capable: true, title: "Money", statusBarStyle: "black-translucent" },
+  // Older iOS versions only look for Apple's own name for this tag.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {
   themeColor: "#06110d",
   colorScheme: "dark",
+  // Draw edge to edge on notched phones; the header and bottom bar pad
+  // themselves with the safe-area insets.
+  viewportFit: "cover",
 };
 
 // Marks the document as JS-enabled before first paint, so elements that

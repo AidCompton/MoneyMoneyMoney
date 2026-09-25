@@ -32,8 +32,9 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
   );
   await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Aid\./ })).toBeVisible();
 
-  // Savings goal
-  await page.getByRole("link", { name: "Goals" }).click();
+  // Savings goal (shared space)
+  await page.getByRole("link", { name: "Shared" }).first().click();
+  await page.getByRole("link", { name: "Goals", exact: true }).click();
   await page.getByLabel("Goal name").fill("Joint Year-End Goal");
   await page.getByLabel("Target amount (R)").fill("100000");
   await page.getByLabel("Target date (optional)").fill("2099-12-31");
@@ -59,7 +60,7 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
   );
 
   // Monthly budget, split across categories
-  await page.getByRole("link", { name: "Budget" }).click();
+  await page.getByRole("link", { name: "Budget", exact: true }).click();
   await page.getByRole("spinbutton", { name: "Food & Toiletries" }).fill("4000");
   await page.getByRole("spinbutton", { name: "Cats" }).fill("800");
   await page.getByRole("spinbutton", { name: "Gas" }).fill("1200");
@@ -71,7 +72,7 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
     await page.locator("label").filter({ has: chip }).click(); // the visible chip
     await expect(chip).toBeChecked();
     await page.getByLabel("Amount (R)").fill(amount);
-    await page.getByLabel("What was it? (optional)").fill(description);
+    await page.getByLabel("Note (optional)").fill(description);
     await page.getByRole("button", { name: "Add expense" }).click();
     await expect(page.getByRole("listitem").filter({ hasText: description })).toBeVisible();
   };
@@ -96,7 +97,7 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
   );
 
   // Money meeting
-  await page.getByRole("link", { name: "Meetings" }).click();
+  await page.getByRole("link", { name: "Meetings", exact: true }).click();
   await page.getByRole("button", { name: /Start this week's meeting/ }).click();
 
   await expect(page).toHaveURL(/\/meetings\/.+/);
@@ -112,7 +113,7 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
   await expect(page.getByText("Move R2000 to savings")).toHaveClass(/line-through/);
 
   // Partner joins with the code shown on the household page.
-  await page.getByRole("link", { name: "Household" }).click();
+  await page.getByRole("link", { name: "Household" }).first().click();
   const joinCode = (await page.getByLabel("Join code").textContent())?.trim() ?? "";
   expect(joinCode).toMatch(/^[A-Z0-9]{6}$/);
 
@@ -131,7 +132,7 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
     "Join household",
   );
   await expect(partner.getByRole("link", { name: /Joint Year-End Goal/ })).toBeVisible();
-  await partner.getByRole("link", { name: "Household" }).click();
+  await partner.getByRole("link", { name: "Household" }).first().click();
   await expect(partner.getByText("Aid", { exact: true })).toBeVisible();
   await partnerContext.close();
 });

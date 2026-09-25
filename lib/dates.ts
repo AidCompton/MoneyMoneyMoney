@@ -23,3 +23,34 @@ export function formatDay(iso: string) {
 export function formatLongDay(iso: string) {
   return format(parseISO(iso), "EEEE, d MMMM yyyy");
 }
+
+export function isMonth(value: string | undefined): value is string {
+  return !!value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+/** A valid YYYY-MM from a search param, or this month. */
+export function monthParam(value: string | undefined, now = new Date()) {
+  return isMonth(value) ? value : monthISO(now);
+}
+
+export function shiftMonth(month: string, delta: number) {
+  const [y, m] = month.split("-").map(Number);
+  return format(new Date(y, m - 1 + delta, 1), "yyyy-MM");
+}
+
+/** "September 2026" */
+export function formatMonth(month: string) {
+  const [y, m] = month.split("-").map(Number);
+  return format(new Date(y, m - 1, 1), "MMMM yyyy");
+}
+
+/** SQL LIKE pattern matching every YYYY-MM-DD date in a month. */
+export function monthPattern(month: string) {
+  return `${month}-%`;
+}
+
+/** First and last day of a month, as YYYY-MM-DD. */
+export function monthBounds(month: string) {
+  const [y, m] = month.split("-").map(Number);
+  return { first: `${month}-01`, last: format(new Date(y, m, 0), "yyyy-MM-dd") };
+}

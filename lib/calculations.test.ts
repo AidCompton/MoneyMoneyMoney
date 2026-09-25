@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { budgetPercentSpent, budgetRemaining, goalProgressPercent, savingsPace } from "./calculations";
 import { formatDay, todayISO } from "./dates";
-import { formatCurrency } from "./currency";
+import { formatCurrency, formatPrice } from "./currency";
 
 describe("goalProgressPercent", () => {
   it("computes a rounded percentage of target reached", () => {
@@ -99,5 +99,14 @@ describe("formatCurrency", () => {
 
   it("puts the minus sign before the R", () => {
     expect(plain(formatCurrency(-2500))).toBe("-R 2 500");
+  });
+});
+
+describe("formatPrice", () => {
+  const plain = (s: string) => s.replace(/ /g, " ");
+  it("shows cents only when there are some", () => {
+    expect(plain(formatPrice(25))).toBe("R 25");
+    expect(plain(formatPrice(24.99))).toBe("R 24.99");
+    expect(plain(formatPrice(1299.5))).toBe("R 1 299.50");
   });
 });

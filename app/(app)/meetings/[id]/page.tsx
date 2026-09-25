@@ -4,7 +4,8 @@ import { requireSession } from "@/lib/auth";
 import {
   getMeetingWithItems,
   getGoalsWithProgress,
-  getMonthSpending,
+  getHouseholdOverview,
+  getGroceryMonth,
   getHouseholdMembers,
   getCarryOverItems,
   currentMonth,
@@ -18,6 +19,8 @@ import { PageHeader, SectionTitle } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { SpendingBreakdown } from "@/components/budget/SpendingBreakdown";
+import { FlowBar } from "@/components/charts/FlowBar";
+import { FLOW } from "@/lib/categories";
 import { NotesEditor } from "@/components/meetings/NotesEditor";
 import { AddActionItemForm } from "@/components/meetings/AddActionItemForm";
 
@@ -36,15 +39,18 @@ export default async function MeetingDetailPage({
 
   const { meeting, items } = result;
 
-  const [goals, spending, members, carryOver] = await Promise.all([
+  const month = currentMonth();
+  const [goals, overview, groceries, members, carryOver] = await Promise.all([
     getGoalsWithProgress(household.id),
-    getMonthSpending(household.id, currentMonth()),
+    getHouseholdOverview(household.id, month),
+    getGroceryMonth(household.id, month),
     getHouseholdMembers(household.id),
     getCarryOverItems(household.id, meeting.id),
   ]);
 
   const doneCount = items.filter((i) => i.done).length;
-  const { categories, totalPlanned, totalSpent, remaining } = spending;
+  const { categories, totalPlanned, totalSpent, remaining } = overview.shared;
+  const flow = overview.household;
   const over = totalPlanned > 0 && remaining < 0;
 
   return (
@@ -110,6 +116,64 @@ export default async function MeetingDetailPage({
           <SpendingBreakdown categories={categories} size={150} innerRadius={52} compact />
         </Card>
       </section>
+
+      {/* The rest of the month, to talk through together */}
+      <Card>
+        <SectionTitle
+          action={
+            <Link href="/dashboard" className="text-sm font-semibold text-gold hover:underline">
+              Overview
+            </Link>
+          }
+        >
+          The month so far
+        </SectionTitle>
+        <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
+          <div className="min-w-0">
+            <FlowBar
+              whole={flow.income || undefined}
+              segments={[
+                { key: "shared", label: "Shared spending", value: flow.sharedSpent, color: FLOW.shared },
+                ...overview.people.map((p, i) => ({
+                  key: p.id,
+                  label: `${p.name}'s spending`,
+                  value: p.spent,
+                  color: i % 2 ? FLOW.partner : FLOW.spent,
+                })),
+                { key: "saved", label: "Saved", value: flow.saved, color: FLOW.saved },
+                { key: "left", label: "Left over", value: Math.max(0, flow.left), color: FLOW.left },
+              ]}
+            />
+          </div>
+          <div className="space-y-3 text-sm">
+            {overview.people.map((p) => (
+              <Link
+                key={p.id}
+                href={`/personal/${p.id}`}
+                className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.035] px-4 py-3 transition-colors hover:bg-white/[0.07]"
+              >
+                <span className="font-semibold">{p.name}</span>
+                <span className="text-ivory/55">
+                  in {formatCurrency(p.income)} · saved {formatCurrency(p.saved)} ·{" "}
+                  <span className={p.left < 0 ? "text-coral" : "text-ivory"}>
+                    {p.left < 0 ? `${formatCurrency(-p.left)} over` : `${formatCurrency(p.left)} left`}
+                  </span>
+                </span>
+              </Link>
+            ))}
+            <Link
+              href="/groceries"
+              className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.035] px-4 py-3 transition-colors hover:bg-white/[0.07]"
+            >
+              <span className="font-semibold">Groceries</span>
+              <span className="text-ivory/55">
+                {formatCurrency(groceries.totals.planned)} planned · {groceries.mealPreps.length} meal prep
+                {groceries.mealPreps.length === 1 ? "" : "s"}
+              </span>
+            </Link>
+          </div>
+        </div>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-2">

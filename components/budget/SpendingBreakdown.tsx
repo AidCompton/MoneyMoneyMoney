@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { PieChart, PieSlice, PieCenter, type PieDatum } from "@/components/charts/PieChart";
 import { formatCurrency } from "@/lib/currency";
+import { foldSlices } from "@/lib/calculations";
+import { OTHER_COLOR } from "@/lib/categories";
 
 type Category = { name: string; color: string; planned: number; spent: number };
 
@@ -23,7 +25,14 @@ export function SpendingBreakdown({
   compact?: boolean;
 }) {
   const [active, setActive] = useState<number | null>(null);
-  const pieData: PieDatum[] = categories.map((c) => ({ label: c.name, value: c.spent, color: c.color }));
+  // Past eight categories the smallest share one "Other" slice; the table
+  // below still lists every category.
+  const pieData: PieDatum[] = foldSlices(
+    categories.map((c) => ({ label: c.name, value: c.spent, color: c.color })),
+    8,
+    (rest) => ({ label: "Other", value: rest.reduce((sum, r) => sum + r.value, 0), color: OTHER_COLOR }),
+  );
+  const sliceIndex = (name: string) => pieData.findIndex((d) => d.label === name);
   const total = categories.reduce((sum, c) => sum + c.spent, 0);
   const rows = compact ? categories.map((c, i) => ({ ...c, i })).filter((c) => c.spent > 0) : categories.map((c, i) => ({ ...c, i }));
 
@@ -53,11 +62,14 @@ export function SpendingBreakdown({
               const share = total > 0 ? Math.round((c.spent / total) * 100) : 0;
               const over = c.planned > 0 && c.spent > c.planned;
               const usage = c.planned > 0 ? Math.min(100, (c.spent / c.planned) * 100) : 0;
-              const isActive = active === c.i;
+              // A folded category lights up the "Other" slice.
+              const slice =
+                c.spent <= 0 ? -1 : sliceIndex(c.name) >= 0 ? sliceIndex(c.name) : pieData.length - 1;
+              const isActive = active === slice;
               return (
                 <tr
                   key={c.name}
-                  onPointerEnter={() => setActive(c.i)}
+                  onPointerEnter={() => setActive(slice)}
                   onPointerLeave={() => setActive(null)}
                   className={`transition-opacity duration-300 ${active !== null && !isActive ? "opacity-40" : ""}`}
                 >

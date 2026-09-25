@@ -9,7 +9,7 @@ export function Card({
   return (
     <div
       data-reveal={reveal ? "" : undefined}
-      className={`glass relative min-w-0 rounded-[28px] p-6 sm:p-7 ${className}`}
+      className={`glass relative min-w-0 rounded-[28px] p-6 focus-within:z-20 sm:p-7 ${className}`}
       {...props}
     />
   );

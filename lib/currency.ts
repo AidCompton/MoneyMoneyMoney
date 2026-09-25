@@ -12,3 +12,11 @@ export function formatCurrency(amount: number) {
   const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
   return `${rounded < 0 ? "-" : ""}R${NBSP}${grouped}`;
 }
+
+/** A shelf price: "R 25", or "R 24.99" when there are cents. */
+export function formatPrice(amount: number) {
+  const cents = Math.round(amount * 100) % 100;
+  if (cents === 0) return formatCurrency(amount);
+  const whole = formatCurrency(Math.trunc(amount));
+  return `${whole}.${String(Math.abs(cents)).padStart(2, "0")}`;
+}

@@ -19,7 +19,8 @@ export function PageReveal({ children }: { children: React.ReactNode }) {
       const mm = gsap.matchMedia();
 
       mm.add(REDUCED_MOTION, () => {
-        gsap.set("[data-reveal], [data-split]", { autoAlpha: 1 });
+        const all = gsap.utils.toArray<HTMLElement>("[data-reveal], [data-split]");
+        if (all.length) gsap.set(all, { autoAlpha: 1 });
       });
 
       mm.add("(prefers-reduced-motion: no-preference)", () => {
@@ -44,6 +45,7 @@ export function PageReveal({ children }: { children: React.ReactNode }) {
         });
 
         const blocks = gsap.utils.toArray<HTMLElement>("[data-reveal]");
+        if (!blocks.length) return;
         gsap.set(blocks, { autoAlpha: 0, y: 36, filter: "blur(10px)" });
         ScrollTrigger.batch(blocks, {
           start: "top 92%",

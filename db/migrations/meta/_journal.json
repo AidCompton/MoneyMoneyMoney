@@ -15,6 +15,13 @@
       "when": 1790351862024,
       "tag": "0001_budget_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790500000000,
+      "tag": "0002_personal_lists_groceries",
+      "breakpoints": true
     }
   ]
 }

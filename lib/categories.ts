@@ -1,36 +1,54 @@
-// The household's spending categories, in the order they appear everywhere
-// (forms, legend, and clockwise around the pie).
+// Category colours and the eight shared categories.
 //
-// Colours are assigned per category and never change, so a category keeps
-// its colour even in months where some categories have no spending. The
-// order was checked for colour-blind separation between every pair of
-// neighbouring slices, including last-to-first around the ring, against the
-// app's dark glass surface. Reordering the list changes which slices touch,
-// so re-check before changing it.
-export const CATEGORIES = [
-  { name: "Food & Toiletries", color: "#199e70" },
-  { name: "Cats", color: "#d95926" },
-  { name: "Gas", color: "#9085e9" },
-  { name: "Fun activity", color: "#d55181" },
-  { name: "House", color: "#c98500" },
-  { name: "Miscellaneous", color: "#1f9bb0" },
-  { name: "IOU", color: "#e66767" },
-  { name: "Gifts", color: "#3987e5" },
+// Every category (shared or personal) stores a colour slot when it's created
+// and keeps it forever, so its colour never changes between months or charts.
+// The shared categories take slots 0-7 in the order below.
+//
+// The palette order was checked for colour-blind separation between every
+// pair of neighbouring slices, including last-to-first around the ring,
+// against the app's dark glass surface. Reordering changes which colours
+// touch, so re-check before changing it. When some slots are missing from a
+// chart, neighbours that were never checked can end up side by side, which
+// is why every chart also has a labelled table and gaps between slices.
+export const PALETTE = [
+  "#199e70", // green
+  "#d95926", // orange
+  "#9085e9", // violet
+  "#d55181", // magenta
+  "#c98500", // gold
+  "#1f9bb0", // cyan
+  "#e66767", // red
+  "#3987e5", // blue
 ] as const;
 
-export type CategoryName = (typeof CATEGORIES)[number]["name"];
+/** Neutral for the folded "Other" slice. */
+export const OTHER_COLOR = "#7f918a";
 
-export const CATEGORY_NAMES = CATEGORIES.map((c) => c.name) as CategoryName[];
+export const SHARED_CATEGORIES = [
+  "Food & Toiletries",
+  "Cats",
+  "Gas",
+  "Fun activity",
+  "House",
+  "Miscellaneous",
+  "IOU",
+  "Gifts",
+] as const;
 
-export function isCategory(value: string): value is CategoryName {
-  return (CATEGORY_NAMES as string[]).includes(value);
+export const FOOD_CATEGORY = SHARED_CATEGORIES[0];
+
+export function colorForIndex(index: number) {
+  return PALETTE[((index % PALETTE.length) + PALETTE.length) % PALETTE.length];
 }
 
-export function categoryColor(name: string) {
-  return CATEGORIES.find((c) => c.name === name)?.color ?? "#8a9a92";
-}
-
-/** Form field name for a category's planned amount, e.g. "plan-Food & Toiletries". */
-export function planField(name: CategoryName) {
-  return `plan-${name}`;
-}
+// Money-flow bars (where income went). Drawn from the same palette and
+// checked in these left-to-right orders:
+//   personal:  spent · shared · saved · left
+//   household: shared · first person · second person · saved · left
+export const FLOW = {
+  spent: PALETTE[1], // orange
+  shared: PALETTE[7], // blue
+  partner: PALETTE[2], // violet
+  saved: PALETTE[0], // green
+  left: PALETTE[4], // gold
+} as const;

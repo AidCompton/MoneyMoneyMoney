@@ -11,7 +11,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { PageHeader, SectionTitle } from "@/components/ui/PageHeader";
 import { Stat } from "@/components/ui/Stat";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { GoalProgressChart } from "@/components/goals/GoalProgressChart";
+import { BalanceChart } from "@/components/charts/BalanceChart";
 import { AddContributionForm } from "@/components/goals/AddContributionForm";
 import { EditGoalForm } from "@/components/goals/EditGoalForm";
 import { CountUp } from "@/components/motion/CountUp";
@@ -85,7 +85,7 @@ export default async function GoalDetailPage({
           )}
         </div>
         <div className="relative mt-10 -mx-2">
-          <GoalProgressChart points={points} targetAmount={goal.targetAmount} />
+          <BalanceChart points={points.length ? [{ date: "Start", total: 0 }, ...points] : []} target={goal.targetAmount} />
         </div>
       </Card>
 

@@ -1,74 +1,59 @@
-import Link from "next/link";
-import { addMonths, format, parse } from "date-fns";
 import { requireSession } from "@/lib/auth";
-import { getMonthSpending, currentMonth } from "@/lib/data";
+import {
+  currentMonth,
+  getContributionsForMonth,
+  getHouseholdMembers,
+  getLabelOptions,
+  getSpending,
+  getSubcategoryOptions,
+} from "@/lib/data";
 import { budgetPercentSpent } from "@/lib/calculations";
-import { categoryColor } from "@/lib/categories";
 import { formatCurrency } from "@/lib/currency";
-import { formatDay } from "@/lib/dates";
-import { deleteExpense } from "@/lib/actions/budget";
+import { formatMonth, monthParam } from "@/lib/dates";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { PageHeader, SectionTitle } from "@/components/ui/PageHeader";
 import { Stat } from "@/components/ui/Stat";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { MonthSwitcher } from "@/components/ui/MonthSwitcher";
 import { BudgetPlanForm } from "@/components/budget/BudgetPlanForm";
-import { LogExpenseForm } from "@/components/budget/LogExpenseForm";
+import { ExpenseForm } from "@/components/budget/ExpenseForm";
 import { SpendingBreakdown } from "@/components/budget/SpendingBreakdown";
+import { ExpenseExplorer } from "@/components/explore/ExpenseExplorer";
 import { CountUp } from "@/components/motion/CountUp";
 
-export default async function BudgetPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ month?: string }>;
-}) {
+type Search = { month?: string; cat?: string; sub?: string; store?: string; who?: string };
+
+export default async function BudgetPage({ searchParams }: { searchParams: Promise<Search> }) {
   const { household } = await requireSession();
   const params = await searchParams;
+  const month = monthParam(params.month);
   const thisMonth = currentMonth();
-  const month = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : thisMonth;
+  const filters = { cat: params.cat, sub: params.sub, store: params.store, who: params.who };
 
-  const monthDate = parse(month, "yyyy-MM", new Date());
-  const prevMonth = format(addMonths(monthDate, -1), "yyyy-MM");
-  const nextMonth = format(addMonths(monthDate, 1), "yyyy-MM");
-  const monthLabel = format(monthDate, "MMMM yyyy");
+  const [spending, members] = await Promise.all([
+    getSpending({ householdId: household.id, ownerUserId: null, month, filters }),
+    getHouseholdMembers(household.id),
+  ]);
+  const contributions = getContributionsForMonth(household.id, month);
+  const paidIn = contributions.reduce((sum, c) => sum + c.amount, 0);
 
-  const { categories, expenseList, totalPlanned, totalSpent, remaining } = await getMonthSpending(
-    household.id,
-    month,
-  );
+  const { totalPlanned, totalSpent, remaining } = spending;
   const hasPlan = totalPlanned > 0;
   const over = hasPlan && remaining < 0;
   const percentSpent = hasPlan ? budgetPercentSpent(totalPlanned, totalSpent) : 0;
 
   // Only the current month has "days left".
-  const today = new Date();
-  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
-  const daysLeft = month === thisMonth ? daysInMonth - today.getDate() + 1 : null;
+  const [y, m] = month.split("-").map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const daysLeft = month === thisMonth ? daysInMonth - new Date().getDate() + 1 : null;
   const perDay = hasPlan && daysLeft && remaining > 0 ? Math.floor(remaining / daysLeft) : null;
 
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow="Monthly budget" title="Spending," accent={format(monthDate, "MMMM")}>
-        <div className="glass flex items-center gap-1 rounded-full p-1">
-          <Link
-            href={`/budget?month=${prevMonth}`}
-            aria-label="Previous month"
-            className="grid h-10 w-10 place-items-center rounded-full text-ivory/70 transition-colors hover:bg-white/10 hover:text-ivory"
-          >
-            ←
-          </Link>
-          <span className="min-w-32 px-2 text-center text-sm font-semibold">{monthLabel}</span>
-          <Link
-            href={`/budget?month=${nextMonth}`}
-            aria-label="Next month"
-            className="grid h-10 w-10 place-items-center rounded-full text-ivory/70 transition-colors hover:bg-white/10 hover:text-ivory"
-          >
-            →
-          </Link>
-        </div>
+      <PageHeader eyebrow="Shared · Monthly budget" title="Spending," accent={formatMonth(month).split(" ")[0]}>
+        <MonthSwitcher basePath="/budget" month={month} params={filters} />
       </PageHeader>
 
-      {/* Headline + where the money went */}
       <Card className="overflow-hidden p-7 sm:p-10">
         <div
           aria-hidden
@@ -81,20 +66,18 @@ export default async function BudgetPage({
                 <p className={`font-display text-[clamp(3rem,8vw,5.5rem)] leading-[0.9] ${over ? "text-coral" : "text-gradient-gold"}`}>
                   <CountUp value={Math.abs(remaining)} />
                 </p>
-                <p className="mt-3 text-lg text-ivory/60">
-                  {over ? "over budget" : "left to spend"} this month
-                </p>
+                <p className="mt-3 text-lg text-ivory/60">{over ? "over budget" : "left to spend"} this month</p>
               </>
             ) : (
               <>
                 <p className="font-display text-[clamp(3rem,8vw,5.5rem)] leading-[0.9] text-ivory">
                   <CountUp value={totalSpent} />
                 </p>
-                <p className="mt-3 text-lg text-ivory/60">spent · set a budget below to track what&apos;s left</p>
+                <p className="mt-3 text-lg text-ivory/60">spent · plan the month below to track what&apos;s left</p>
               </>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-6 sm:gap-10">
+          <div className="grid grid-cols-2 gap-6 sm:grid-cols-4 sm:gap-10">
             <Stat label="Spent">{formatCurrency(totalSpent)}</Stat>
             <Stat label="Budget">{hasPlan ? formatCurrency(totalPlanned) : "—"}</Stat>
             {perDay !== null ? (
@@ -102,8 +85,11 @@ export default async function BudgetPage({
                 {formatCurrency(perDay)}
               </Stat>
             ) : (
-              <Stat label="Expenses">{expenseList.length}</Stat>
+              <Stat label="Expenses">{spending.expenseCount}</Stat>
             )}
+            <Stat label="Paid in" tone={hasPlan && paidIn < totalPlanned ? "gold" : "ivory"}>
+              {formatCurrency(paidIn)}
+            </Stat>
           </div>
         </div>
         {hasPlan && (
@@ -111,54 +97,48 @@ export default async function BudgetPage({
             <ProgressBar percent={percentSpent} tone={over ? "over" : "spend"} label="Budget spent" />
           </div>
         )}
+        {paidIn > 0 && (
+          <p className="relative mt-4 text-sm text-ivory/50">
+            Paid into the shared pot:{" "}
+            {members
+              .map((member) => {
+                const amount = contributions.filter((c) => c.userId === member.id).reduce((s, c) => s + c.amount, 0);
+                return `${member.name} ${formatCurrency(amount)}`;
+              })
+              .join(" · ")}
+          </p>
+        )}
         <div className="relative mt-10 border-t border-white/[0.07] pt-10">
-          <SpendingBreakdown categories={categories} />
+          <SpendingBreakdown categories={spending.categories} />
         </div>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <SectionTitle>Add an expense</SectionTitle>
-          <LogExpenseForm key={month} month={month} />
+          <ExpenseForm
+            key={month}
+            scope="shared"
+            month={month}
+            categories={spending.categories.map(({ id, name, color }) => ({ id, name, color }))}
+            subcategories={getSubcategoryOptions(household.id, "shared")}
+            stores={getLabelOptions(household.id, "store")}
+          />
         </Card>
         <Card>
-          <SectionTitle>{hasPlan ? `Budget for ${monthLabel}` : `Plan ${monthLabel}`}</SectionTitle>
+          <SectionTitle>{hasPlan ? `Budget for ${formatMonth(month)}` : `Plan ${formatMonth(month)}`}</SectionTitle>
           <BudgetPlanForm
             key={month}
+            scope="shared"
             month={month}
-            planned={Object.fromEntries(categories.map((c) => [c.name, c.planned]))}
+            categories={spending.planCategories}
+            planned={spending.planned}
+            previousPlanned={spending.previousPlanned}
           />
         </Card>
       </div>
 
-      <Card>
-        <SectionTitle>Expenses · {expenseList.length}</SectionTitle>
-        {expenseList.length === 0 ? (
-          <p className="text-ivory/55">Nothing logged for {monthLabel} yet.</p>
-        ) : (
-          <ul className="divide-y divide-white/[0.07]">
-            {expenseList.map((e) => (
-              <li key={e.id} className="row-enter flex items-center gap-4 py-3.5">
-                <span
-                  aria-hidden
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ background: categoryColor(e.category) }}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{e.description}</p>
-                  <p className="truncate text-sm text-ivory/45">
-                    {e.category} · {formatDay(e.date)} · {e.user.name}
-                  </p>
-                </div>
-                <span className="font-semibold tabular">{formatCurrency(e.amount)}</span>
-                <form action={deleteExpense.bind(null, e.id)}>
-                  <ConfirmButton icon label="Delete expense" />
-                </form>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      <ExpenseExplorer spending={spending} basePath="/budget" month={month} canEdit />
     </div>
   );
 }

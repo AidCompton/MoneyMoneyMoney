@@ -37,8 +37,8 @@ export default async function SavingsPage({
   const filters = { account: search.account, tag: search.tag, dir: search.dir };
   const basePath = `/personal/${person.id}/savings`;
   const [accounts, activity] = await Promise.all([
-    getSavingsAccounts(person.id, month),
-    getSavingsActivity(person.id, month, filters),
+    getSavingsAccounts(household.id, person.id, month),
+    getSavingsActivity(household.id, person.id, month, filters),
   ]);
   const total = accounts.reduce((sum, a) => sum + a.balance, 0);
   const thisMonth = accounts.reduce((sum, a) => sum + a.thisMonth, 0);
@@ -84,7 +84,14 @@ export default async function SavingsPage({
               <div className="glass relative h-full overflow-hidden rounded-[28px] p-6 transition-transform duration-500 ease-out group-hover:-translate-y-1">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="truncate text-lg font-semibold tracking-tight">{a.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate text-lg font-semibold tracking-tight">{a.name}</h3>
+                      {a.joint && (
+                        <span className="shrink-0 rounded-full bg-gold/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-gold">
+                          Joint
+                        </span>
+                      )}
+                    </div>
                     {a.institution && <p className="truncate text-sm text-ivory/45">{a.institution}</p>}
                   </div>
                   <Sparkline values={a.series.map((p) => p.balance)} width={96} height={32} />

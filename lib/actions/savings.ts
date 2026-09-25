@@ -30,12 +30,13 @@ export async function createSavingsAccount(_prev: ActionState, fd: FormData): Pr
   if (Number.isNaN(opening) || opening < 0) return { error: "The current balance must be zero or more." };
   const openingDate = str(fd, "openingDate") || todayISO();
   if (!isISODate(openingDate)) return { error: "Pick the date of that balance." };
+  const joint = str(fd, "scope") === "joint";
 
   const account = db
     .insert(savingsAccounts)
     .values({
       householdId: household.id,
-      ownerUserId: user.id,
+      ownerUserId: joint ? null : user.id,
       ...fields,
       openingBalance: opening,
       openingDate,
@@ -47,10 +48,13 @@ export async function createSavingsAccount(_prev: ActionState, fd: FormData): Pr
   redirect(`/personal/${user.id}/savings/${account.id}`);
 }
 
+/** A personal account you own, or a joint account shared by your household. */
 async function ownAccount(accountId: string) {
-  const { user } = await requireSession();
+  const { user, household } = await requireSession();
   const account = db.select().from(savingsAccounts).where(eq(savingsAccounts.id, accountId)).get();
-  return account && account.ownerUserId === user.id ? { account, user } : null;
+  if (!account) return null;
+  const allowed = account.ownerUserId ? account.ownerUserId === user.id : account.householdId === household.id;
+  return allowed ? { account, user } : null;
 }
 
 export async function updateSavingsAccount(_prev: ActionState, fd: FormData): Promise<ActionState> {

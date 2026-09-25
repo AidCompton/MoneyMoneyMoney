@@ -207,16 +207,16 @@ export const goalContributions = sqliteTable("goal_contributions", {
 });
 
 /**
- * A personal savings account. The balance when it was added is stored as an
- * opening balance (not a deposit), so it doesn't count as "saved" in the
- * month the account was set up.
+ * A savings account: personal to one of you, or joint (ownerUserId null,
+ * shared by the household) like a joint account you both pay into. The
+ * balance when it was added is stored as an opening balance (not a
+ * deposit), so it doesn't count as "saved" in the month the account was set
+ * up.
  */
 export const savingsAccounts = sqliteTable("savings_accounts", {
   id: id(),
   householdId: householdId(),
-  ownerUserId: text("owner_user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  ownerUserId: text("owner_user_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   institution: text("institution"),
   targetAmount: real("target_amount"),

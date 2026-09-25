@@ -25,7 +25,8 @@ export default async function SavingsAccountPage({
   const { user, household } = await requireSession();
   const person = (await getHouseholdMembers(household.id)).find((m) => m.id === userId);
   const result = await getSavingsAccount(accountId, currentMonth());
-  if (!person || !result || result.account.ownerUserId !== person.id) notFound();
+  const validOwner = result && (result.account.ownerUserId ? result.account.ownerUserId === person?.id : result.account.householdId === household.id);
+  if (!person || !result || !validOwner) notFound();
 
   const { account, summary, transactions } = result;
   const isOwner = person.id === user.id;
@@ -35,7 +36,11 @@ export default async function SavingsAccountPage({
 
   return (
     <div className="space-y-8">
-      <PageHeader tone="mint" eyebrow={`Savings account${account.institution ? ` · ${account.institution}` : ""}`} title={account.name}>
+      <PageHeader
+        tone="mint"
+        eyebrow={`${account.ownerUserId ? "Savings account" : "Joint savings account"}${account.institution ? ` · ${account.institution}` : ""}`}
+        title={account.name}
+      >
         <Link href={`/personal/${person.id}/savings`} className="text-sm font-semibold text-mint hover:underline">
           ← All savings
         </Link>

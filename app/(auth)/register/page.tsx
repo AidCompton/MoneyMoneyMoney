@@ -1,142 +1,54 @@
-"use client";
-
-import { useActionState, useState } from "react";
 import Link from "next/link";
-import { createHousehold, joinHousehold, type ActionState } from "@/lib/actions/auth";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { SubmitButton } from "@/components/ui/SubmitButton";
-import { FormError } from "@/components/ui/FormError";
+import { CreateHouseholdForm, JoinHouseholdForm } from "@/components/auth/RegisterForms";
 
-const initialState: ActionState = {};
+type Search = { join?: string; code?: string };
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+// The tabs are links (/register and /register?join), not client state, so
+// joining works even when the page's scripts haven't loaded, say on a phone
+// with a weak Wi-Fi signal. A join link (/register?code=AB12CD) opens the
+// join form with the code already filled in.
+function Tab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-        active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+    <Link
+      href={href}
+      replace
+      scroll={false}
+      aria-current={active ? "page" : undefined}
+      className={`flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-center text-sm leading-tight font-semibold transition-all duration-500 ${
+        active
+          ? "bg-gradient-to-r from-gold to-sunrise text-night shadow-[0_6px_20px_-6px_rgb(247_195_92/0.8)]"
+          : "text-ivory/60 hover:text-ivory"
       }`}
     >
       {children}
-    </button>
+    </Link>
   );
 }
 
-function CreateHouseholdForm() {
-  const [state, formAction] = useActionState(createHousehold, initialState);
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<Search> }) {
+  const params = await searchParams;
+  const code = params.code?.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 12) || undefined;
+  const joining = params.join !== undefined || !!code;
+
   return (
-    <form action={formAction} className="space-y-4">
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="householdName">
-          Household name
-        </label>
-        <Input
-          id="householdName"
-          name="householdName"
-          placeholder="e.g. The Comptons"
-          required
-          autoFocus
-        />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="name">
-          Your name
-        </label>
-        <Input id="name" name="name" required />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
-          Email
-        </label>
-        <Input id="email" name="email" type="email" required />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
-          Password
-        </label>
-        <Input id="password" name="password" type="password" minLength={8} required />
-      </div>
-      <FormError message={state.error} />
-      <SubmitButton className="w-full" pendingText="Creating…">
-        Create household
-      </SubmitButton>
-      <p className="text-xs text-slate-500">
-        You&apos;ll get a join code afterwards to share with your partner.
+    <Card className="p-8 sm:p-10">
+      <h2 className="text-2xl font-semibold tracking-tight">Get started</h2>
+      <p className="mt-1 mb-6 text-sm text-ivory/55">
+        One of you creates the household; the other joins with its code.
       </p>
-    </form>
-  );
-}
-
-function JoinHouseholdForm() {
-  const [state, formAction] = useActionState(joinHousehold, initialState);
-  return (
-    <form action={formAction} className="space-y-4">
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="joinCode">
-          Join code
-        </label>
-        <Input
-          id="joinCode"
-          name="joinCode"
-          placeholder="e.g. AB12CD"
-          className="uppercase"
-          required
-          autoFocus
-        />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="name">
-          Your name
-        </label>
-        <Input id="name" name="name" required />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
-          Email
-        </label>
-        <Input id="email" name="email" type="email" required />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
-          Password
-        </label>
-        <Input id="password" name="password" type="password" minLength={8} required />
-      </div>
-      <FormError message={state.error} />
-      <SubmitButton className="w-full" pendingText="Joining…">
-        Join household
-      </SubmitButton>
-    </form>
-  );
-}
-
-export default function RegisterPage() {
-  const [tab, setTab] = useState<"create" | "join">("create");
-
-  return (
-    <Card>
-      <div className="mb-4 flex rounded-md bg-slate-100 p-1">
-        <TabButton active={tab === "create"} onClick={() => setTab("create")}>
+      <nav aria-label="Sign-up options" className="mb-8 flex rounded-full bg-white/[0.05] p-1 ring-1 ring-inset ring-white/10">
+        <Tab href="/register" active={!joining}>
           New household
-        </TabButton>
-        <TabButton active={tab === "join"} onClick={() => setTab("join")}>
+        </Tab>
+        <Tab href={code ? `/register?code=${code}` : "/register?join"} active={joining}>
           Join a household
-        </TabButton>
-      </div>
-      {tab === "create" ? <CreateHouseholdForm /> : <JoinHouseholdForm />}
-      <p className="mt-4 text-center text-sm text-slate-600">
+        </Tab>
+      </nav>
+      {joining ? <JoinHouseholdForm code={code} /> : <CreateHouseholdForm />}
+      <p className="mt-6 text-center text-sm text-ivory/55">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-emerald-700 hover:underline">
+        <Link href="/login" className="font-semibold text-gold hover:underline">
           Sign in
         </Link>
       </p>

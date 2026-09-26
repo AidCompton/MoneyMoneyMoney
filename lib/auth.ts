@@ -48,7 +48,8 @@ export async function requireSession() {
   });
 
   if (!user || !household) {
-    session.destroy();
+    // Can't destroy the cookie from here (this runs during render, not a
+    // Server Action), but logging in again overwrites it regardless.
     redirect("/login");
   }
 

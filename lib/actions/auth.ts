@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { households, users } from "@/db/schema";
 import { getSession, hashPassword, verifyPassword, generateJoinCode } from "@/lib/auth";
+import { ensureSharedCategories } from "@/lib/data/lists";
 
 export type ActionState = { error?: string };
 
@@ -40,6 +41,7 @@ export async function createHousehold(
     .insert(households)
     .values({ name: householdName, joinCode })
     .returning();
+  ensureSharedCategories(household.id);
   const passwordHash = await hashPassword(password);
   const [user] = await db
     .insert(users)
@@ -59,7 +61,7 @@ export async function joinHousehold(
   formData: FormData,
 ): Promise<ActionState> {
   const joinCode = String(formData.get("joinCode") ?? "")
-    .trim()
+    .replace(/\s+/g, "")
     .toUpperCase();
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")

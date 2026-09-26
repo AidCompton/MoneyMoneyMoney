@@ -1,22 +1,33 @@
-import { ButtonHTMLAttributes } from "react";
+"use client";
 
-type Variant = "primary" | "secondary" | "danger";
-
-const variantClasses: Record<Variant, string> = {
-  primary: "bg-emerald-600 text-white hover:bg-emerald-700",
-  secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
-  danger: "bg-red-600 text-white hover:bg-red-700",
-};
+import { ButtonHTMLAttributes, useRef } from "react";
+import { useMagnetic } from "@/components/motion/useMagnetic";
+import { buttonClasses, type Size, type Variant } from "./buttonClasses";
 
 export function Button({
   variant = "primary",
+  size = "md",
+  magnetic = variant === "primary",
   className = "",
+  children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: Variant;
+  size?: Size;
+  magnetic?: boolean;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useMagnetic(ref, magnetic ? 0.25 : 0);
+
   return (
-    <button
-      className={`rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`}
-      {...props}
-    />
+    <button ref={ref} className={buttonClasses({ variant, size, className })} {...props}>
+      {variant === "primary" && (
+        <span
+          aria-hidden
+          className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/50 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
+        />
+      )}
+      <span className="relative inline-flex items-center gap-2">{children}</span>
+    </button>
   );
 }

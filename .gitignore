@@ -38,6 +38,7 @@ yarn-error.log*
 
 # local household data - never commit
 /data/
+/data-e2e/
 
 # playwright
 /test-results/

@@ -8,6 +8,34 @@
       "when": 1790345865182,
       "tag": "0000_gifted_victor_mancha",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790351862024,
+      "tag": "0001_budget_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790358000000,
+      "tag": "0002_personal_lists_groceries",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790368916406,
+      "tag": "0003_joint_savings_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790371942926,
+      "tag": "0004_receipts",
+      "breakpoints": true
     }
   ]
 }

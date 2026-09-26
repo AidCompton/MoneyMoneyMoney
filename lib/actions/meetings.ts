@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { moneyMeetings, actionItems } from "@/db/schema";
 import { requireSession } from "@/lib/auth";
 
-export type ActionState = { error?: string };
+export type ActionState = { error?: string; saved?: boolean };
 
 export async function createMeeting(
   _prev: ActionState,
@@ -26,6 +26,7 @@ export async function createMeeting(
     .returning();
 
   revalidatePath("/meetings");
+  revalidatePath("/dashboard");
   redirect(`/meetings/${meeting.id}`);
 }
 
@@ -53,7 +54,7 @@ export async function updateNotes(_prev: ActionState, formData: FormData): Promi
   await db.update(moneyMeetings).set({ notes }).where(eq(moneyMeetings.id, meetingId));
 
   revalidatePath(`/meetings/${meetingId}`);
-  return {};
+  return { saved: true };
 }
 
 export async function addActionItem(
@@ -116,4 +117,33 @@ export async function carryOverItem(itemId: string, targetMeetingId: string) {
   revalidatePath(`/meetings/${targetMeetingId}`);
   revalidatePath(`/meetings/${item.meetingId}`);
   revalidatePath("/dashboard");
+}
+
+export async function deleteActionItem(itemId: string, meetingId: string) {
+  const { household } = await requireSession();
+
+  const meeting = await assertOwnedMeeting(meetingId, household.id);
+  if (!meeting) return;
+
+  const item = await db.query.actionItems.findFirst({ where: eq(actionItems.id, itemId) });
+  if (!item || item.meetingId !== meetingId) return;
+
+  await db.delete(actionItems).where(eq(actionItems.id, itemId));
+
+  revalidatePath(`/meetings/${meetingId}`);
+  revalidatePath("/dashboard");
+}
+
+export async function deleteMeeting(meetingId: string) {
+  const { household } = await requireSession();
+
+  const meeting = await assertOwnedMeeting(meetingId, household.id);
+  if (!meeting) return;
+
+  // Its action items go with it (ON DELETE CASCADE).
+  await db.delete(moneyMeetings).where(eq(moneyMeetings.id, meetingId));
+
+  revalidatePath("/meetings");
+  revalidatePath("/dashboard");
+  redirect("/meetings");
 }

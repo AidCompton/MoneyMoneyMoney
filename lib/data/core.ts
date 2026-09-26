@@ -1,19 +1,15 @@
 import "server-only";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  savingsGoals,
-  goalContributions,
-  monthlyBudgets,
-  expenses,
-  moneyMeetings,
-  actionItems,
-  users,
-} from "@/db/schema";
-import { goalProgressPercent, budgetRemaining } from "@/lib/calculations";
+import { savingsGoals, goalContributions, moneyMeetings, actionItems, users } from "@/db/schema";
+import { goalProgressPercent } from "@/lib/calculations";
+import { monthISO } from "@/lib/dates";
 
 export async function getHouseholdMembers(householdId: string) {
-  return db.query.users.findMany({ where: eq(users.householdId, householdId) });
+  return db.query.users.findMany({
+    where: eq(users.householdId, householdId),
+    orderBy: (user, { asc }) => [asc(user.createdAt)],
+  });
 }
 
 export async function getGoalsWithProgress(householdId: string) {
@@ -63,35 +59,7 @@ export async function getGoalWithContributions(goalId: string) {
 }
 
 export function currentMonth() {
-  return new Date().toISOString().slice(0, 7); // YYYY-MM
-}
-
-export async function getBudgetWithExpenses(
-  householdId: string,
-  month: string,
-  category = "Groceries",
-) {
-  const budget = await db.query.monthlyBudgets.findFirst({
-    where: and(
-      eq(monthlyBudgets.householdId, householdId),
-      eq(monthlyBudgets.month, month),
-      eq(monthlyBudgets.category, category),
-    ),
-  });
-
-  if (!budget) {
-    return { budget: null, expenseList: [], spent: 0, remaining: 0 };
-  }
-
-  const expenseList = await db.query.expenses.findMany({
-    where: eq(expenses.budgetId, budget.id),
-    orderBy: [desc(expenses.date), desc(expenses.createdAt)],
-    with: { user: true },
-  });
-
-  const spent = expenseList.reduce((sum, e) => sum + e.amount, 0);
-
-  return { budget, expenseList, spent, remaining: budgetRemaining(budget.budgetedAmount, spent) };
+  return monthISO(); // YYYY-MM, local time
 }
 
 export async function getMeetings(householdId: string) {

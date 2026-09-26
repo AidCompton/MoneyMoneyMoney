@@ -123,7 +123,8 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
   const partnerContext = await browser.newContext();
   const partner = await partnerContext.newPage();
   await partner.goto("/register");
-  await partner.getByRole("button", { name: "Join a household" }).click();
+  await partner.getByRole("link", { name: "Join a household" }).click();
+  await expect(partner).toHaveURL(/\?join/);
   await register(
     partner,
     {

@@ -61,7 +61,7 @@ export async function joinHousehold(
   formData: FormData,
 ): Promise<ActionState> {
   const joinCode = String(formData.get("joinCode") ?? "")
-    .trim()
+    .replace(/\s+/g, "")
     .toUpperCase();
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")

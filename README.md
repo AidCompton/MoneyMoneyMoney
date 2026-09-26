@@ -32,9 +32,16 @@ npm run start       # -> http://<this-machine's-LAN-IP>:3000
 
 1. One of you registers at `/register` under "New household". This
    creates the household; the join code is on the Household page.
-2. The other registers under "Join a household" with that code.
+2. The other joins from their own phone or computer, on your home Wi-Fi.
+   The easiest way is the **join link** (or its QR code) on the Household
+   page, which opens the sign-up page with the code already filled in.
+   Otherwise, choose "Join a household" and type the code.
 3. You're both now signed in separately, sharing the same goals, budget,
    and meeting history.
+
+Joining works with `npm run dev` as well as `npm run start`. The dev server
+allows this computer's home-network addresses (see `next.config.ts`). If
+you changed networks since starting it, restart it.
 
 Lost the code? It's always on the **Household** page (and on the overview
 until the second person joins).

@@ -28,6 +28,22 @@ npm run build
 npm run start       # -> http://<this-machine's-LAN-IP>:3000
 ```
 
+### Updating
+
+After pulling a new version, back up first, install any new packages, then
+rebuild:
+
+```bash
+npm run db:backup
+git pull
+npm install
+npm run build && npm run start
+```
+
+If you forget `npm install`, the app says so rather than failing with
+"Module not found". Database changes are applied automatically when the app
+starts.
+
 ## First-time setup
 
 1. One of you registers at `/register` under "New household". This

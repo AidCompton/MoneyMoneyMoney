@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { savingsGoals, goalContributions, moneyMeetings, actionItems, users } from "@/db/schema";
 import { goalProgressPercent } from "@/lib/calculations";
@@ -9,22 +9,26 @@ export async function getHouseholdMembers(householdId: string) {
   return db.query.users.findMany({
     where: eq(users.householdId, householdId),
     orderBy: (user, { asc }) => [asc(user.createdAt)],
+    columns: { passwordHash: false },
   });
 }
 
 export async function getGoalsWithProgress(householdId: string) {
-  const goals = await db.query.savingsGoals.findMany({
-    where: and(eq(savingsGoals.householdId, householdId), eq(savingsGoals.archived, false)),
-    orderBy: (goal, { asc }) => [asc(goal.createdAt)],
-  });
-
-  const totals = await db
-    .select({
-      goalId: goalContributions.goalId,
-      total: sql<number>`coalesce(sum(${goalContributions.amount}), 0)`,
-    })
-    .from(goalContributions)
-    .groupBy(goalContributions.goalId);
+  const [goals, totals] = await Promise.all([
+    db.query.savingsGoals.findMany({
+      where: and(eq(savingsGoals.householdId, householdId), eq(savingsGoals.archived, false)),
+      orderBy: (goal, { asc }) => [asc(goal.createdAt)],
+    }),
+    db
+      .select({
+        goalId: goalContributions.goalId,
+        total: sql<number>`coalesce(sum(${goalContributions.amount}), 0)`.mapWith(Number),
+      })
+      .from(goalContributions)
+      .innerJoin(savingsGoals, eq(savingsGoals.id, goalContributions.goalId))
+      .where(eq(savingsGoals.householdId, householdId))
+      .groupBy(goalContributions.goalId),
+  ]);
 
   const totalsByGoal = new Map(totals.map((t) => [t.goalId, t.total]));
 
@@ -38,14 +42,17 @@ export async function getGoalsWithProgress(householdId: string) {
   });
 }
 
-export async function getGoalWithContributions(goalId: string) {
-  const goal = await db.query.savingsGoals.findFirst({ where: eq(savingsGoals.id, goalId) });
+/** A goal and its contributions, or null if it isn't this household's. */
+export async function getGoalWithContributions(goalId: string, householdId: string) {
+  const goal = await db.query.savingsGoals.findFirst({
+    where: and(eq(savingsGoals.id, goalId), eq(savingsGoals.householdId, householdId)),
+  });
   if (!goal) return null;
 
   const contributions = await db.query.goalContributions.findMany({
     where: eq(goalContributions.goalId, goalId),
     orderBy: [desc(goalContributions.date), desc(goalContributions.createdAt)],
-    with: { user: true },
+    with: { user: { columns: { id: true, name: true } } },
   });
 
   const saved = contributions.reduce((sum, c) => sum + c.amount, 0);
@@ -69,16 +76,17 @@ export async function getMeetings(householdId: string) {
   });
 }
 
-export async function getMeetingWithItems(meetingId: string) {
+/** A meeting and its action items, or null if it isn't this household's. */
+export async function getMeetingWithItems(meetingId: string, householdId: string) {
   const meeting = await db.query.moneyMeetings.findFirst({
-    where: eq(moneyMeetings.id, meetingId),
+    where: and(eq(moneyMeetings.id, meetingId), eq(moneyMeetings.householdId, householdId)),
   });
   if (!meeting) return null;
 
   const items = await db.query.actionItems.findMany({
     where: eq(actionItems.meetingId, meetingId),
-    orderBy: (item, { asc }) => [asc(item.done), asc(item.createdAt)],
-    with: { assignee: true },
+    orderBy: [asc(actionItems.done), asc(actionItems.createdAt)],
+    with: { assignee: { columns: { id: true, name: true } } },
   });
 
   return { meeting, items };

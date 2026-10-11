@@ -36,9 +36,10 @@ export default async function SavingsPage({
   const month = monthParam(search.month);
   const filters = { account: search.account, tag: search.tag, dir: search.dir };
   const basePath = `/personal/${person.id}/savings`;
-  const [accounts, activity] = await Promise.all([
+  const [accounts, activity, tagOptions] = await Promise.all([
     getSavingsAccounts(household.id, person.id, month),
     getSavingsActivity(household.id, person.id, month, filters),
+    getLabelOptions(household.id, "savings_tag"),
   ]);
   const total = accounts.reduce((sum, a) => sum + a.balance, 0);
   const thisMonth = accounts.reduce((sum, a) => sum + a.thisMonth, 0);
@@ -130,7 +131,7 @@ export default async function SavingsPage({
                 key={month}
                 month={month}
                 accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
-                tags={getLabelOptions(household.id, "savings_tag")}
+                tags={tagOptions}
               />
             </Card>
           )}

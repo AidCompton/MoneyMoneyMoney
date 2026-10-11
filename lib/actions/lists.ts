@@ -15,8 +15,9 @@ import {
   subcategories,
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth";
+import { isId, str } from "@/lib/form";
 import { cleanName, nameKey } from "@/lib/lists";
-import type { Queryable } from "@/lib/data/lists";
+import type { Queryable } from "@/db";
 
 export type ActionState = { error?: string; saved?: boolean; merged?: string };
 
@@ -28,24 +29,24 @@ export type ListKind = "store" | "income_source" | "savings_tag" | "subcategory"
 // anything that used them.
 // ---------------------------------------------------------------------------
 
-function mergeLabel(q: Queryable, fromId: string, toId: string) {
-  q.update(expenses).set({ storeId: toId }).where(eq(expenses.storeId, fromId)).run();
-  q.update(incomes).set({ sourceId: toId }).where(eq(incomes.sourceId, fromId)).run();
-  q.update(savingsTransactions).set({ tagId: toId }).where(eq(savingsTransactions.tagId, fromId)).run();
-  q.delete(labels).where(eq(labels.id, fromId)).run();
+async function mergeLabel(q: Queryable, fromId: string, toId: string) {
+  await q.update(expenses).set({ storeId: toId }).where(eq(expenses.storeId, fromId));
+  await q.update(incomes).set({ sourceId: toId }).where(eq(incomes.sourceId, fromId));
+  await q.update(savingsTransactions).set({ tagId: toId }).where(eq(savingsTransactions.tagId, fromId));
+  await q.delete(labels).where(eq(labels.id, fromId));
 }
 
-function mergeSubcategory(q: Queryable, fromId: string, toId: string) {
-  q.update(expenses).set({ subcategoryId: toId }).where(eq(expenses.subcategoryId, fromId)).run();
-  q.delete(subcategories).where(eq(subcategories.id, fromId)).run();
+async function mergeSubcategory(q: Queryable, fromId: string, toId: string) {
+  await q.update(expenses).set({ subcategoryId: toId }).where(eq(expenses.subcategoryId, fromId));
+  await q.delete(subcategories).where(eq(subcategories.id, fromId));
 }
 
-function mergeCategory(q: Queryable, fromId: string, toId: string) {
-  q.update(expenses).set({ categoryId: toId }).where(eq(expenses.categoryId, fromId)).run();
+async function mergeCategory(q: Queryable, fromId: string, toId: string) {
+  await q.update(expenses).set({ categoryId: toId }).where(eq(expenses.categoryId, fromId));
 
   // Budget lines for the same person and month are added together.
-  for (const line of q.select().from(budgetLines).where(eq(budgetLines.categoryId, fromId)).all()) {
-    const target = q
+  for (const line of await q.select().from(budgetLines).where(eq(budgetLines.categoryId, fromId))) {
+    const [target] = await q
       .select()
       .from(budgetLines)
       .where(
@@ -55,81 +56,84 @@ function mergeCategory(q: Queryable, fromId: string, toId: string) {
           line.ownerUserId ? eq(budgetLines.ownerUserId, line.ownerUserId) : isNull(budgetLines.ownerUserId),
         ),
       )
-      .get();
+      .limit(1);
     if (target) {
-      q.update(budgetLines).set({ amount: target.amount + line.amount }).where(eq(budgetLines.id, target.id)).run();
-      q.delete(budgetLines).where(eq(budgetLines.id, line.id)).run();
+      await q.update(budgetLines).set({ amount: target.amount + line.amount }).where(eq(budgetLines.id, target.id));
+      await q.delete(budgetLines).where(eq(budgetLines.id, line.id));
     } else {
-      q.update(budgetLines).set({ categoryId: toId }).where(eq(budgetLines.id, line.id)).run();
+      await q.update(budgetLines).set({ categoryId: toId }).where(eq(budgetLines.id, line.id));
     }
   }
 
   // Sub-categories move across, merging with any of the same name.
-  for (const sub of q.select().from(subcategories).where(eq(subcategories.categoryId, fromId)).all()) {
-    const twin = q
+  for (const sub of await q.select().from(subcategories).where(eq(subcategories.categoryId, fromId))) {
+    const [twin] = await q
       .select()
       .from(subcategories)
       .where(and(eq(subcategories.categoryId, toId), eq(subcategories.key, sub.key)))
-      .get();
-    if (twin) mergeSubcategory(q, sub.id, twin.id);
-    else q.update(subcategories).set({ categoryId: toId }).where(eq(subcategories.id, sub.id)).run();
+      .limit(1);
+    if (twin) await mergeSubcategory(q, sub.id, twin.id);
+    else await q.update(subcategories).set({ categoryId: toId }).where(eq(subcategories.id, sub.id));
   }
 
-  q.delete(categories).where(eq(categories.id, fromId)).run();
+  await q.delete(categories).where(eq(categories.id, fromId));
 }
 
-function mergeGroceryItem(q: Queryable, fromId: string, toId: string) {
-  q.update(groceryListItems).set({ itemId: toId }).where(eq(groceryListItems.itemId, fromId)).run();
-  q.delete(groceryItems).where(eq(groceryItems.id, fromId)).run();
+async function mergeGroceryItem(q: Queryable, fromId: string, toId: string) {
+  await q.update(groceryListItems).set({ itemId: toId }).where(eq(groceryListItems.itemId, fromId));
+  await q.delete(groceryItems).where(eq(groceryItems.id, fromId));
 }
+
+const LIST_KINDS: ListKind[] = ["store", "income_source", "savings_tag", "subcategory", "personal_category", "grocery_item"];
 
 /** Renames an entry, or merges it into the entry that already has that name. */
 export async function renameListEntry(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const { household } = await requireSession();
-  const kind = String(fd.get("kind") ?? "") as ListKind;
-  const id = String(fd.get("id") ?? "");
-  const name = cleanName(String(fd.get("name") ?? ""));
+  const kind = str(fd, "kind") as ListKind;
+  const id = str(fd, "id");
+  const name = cleanName(str(fd, "name"));
   const key = nameKey(name);
   if (!name) return { error: "The name can't be empty." };
+  if (!LIST_KINDS.includes(kind) || !isId(id)) return { error: "Not found." };
 
-  const result = db.transaction((tx): ActionState => {
+  const result = await db.transaction(async (tx): Promise<ActionState> => {
     if (kind === "store" || kind === "income_source" || kind === "savings_tag") {
-      const entry = tx.select().from(labels).where(eq(labels.id, id)).get();
+      const [entry] = await tx.select().from(labels).where(eq(labels.id, id)).limit(1);
       if (!entry || entry.householdId !== household.id || entry.kind !== kind) return { error: "Not found." };
-      const twin = tx
+      const [twin] = await tx
         .select()
         .from(labels)
         .where(and(eq(labels.householdId, household.id), eq(labels.kind, kind), eq(labels.key, key), ne(labels.id, id)))
-        .get();
+        .limit(1);
       if (twin) {
-        mergeLabel(tx, id, twin.id);
+        await mergeLabel(tx, id, twin.id);
         return { merged: twin.name };
       }
-      tx.update(labels).set({ name, key }).where(eq(labels.id, id)).run();
+      await tx.update(labels).set({ name, key }).where(eq(labels.id, id));
       return { saved: true };
     }
 
     if (kind === "subcategory") {
-      const entry = tx.select().from(subcategories).where(eq(subcategories.id, id)).get();
+      const [entry] = await tx.select().from(subcategories).where(eq(subcategories.id, id)).limit(1);
       if (!entry || entry.householdId !== household.id) return { error: "Not found." };
-      const twin = tx
+      const [twin] = await tx
         .select()
         .from(subcategories)
         .where(and(eq(subcategories.categoryId, entry.categoryId), eq(subcategories.key, key), ne(subcategories.id, id)))
-        .get();
+        .limit(1);
       if (twin) {
-        mergeSubcategory(tx, id, twin.id);
+        await mergeSubcategory(tx, id, twin.id);
         return { merged: twin.name };
       }
-      tx.update(subcategories).set({ name, key }).where(eq(subcategories.id, id)).run();
+      await tx.update(subcategories).set({ name, key }).where(eq(subcategories.id, id));
       return { saved: true };
     }
 
     if (kind === "personal_category") {
-      const entry = tx.select().from(categories).where(eq(categories.id, id)).get();
+      const [entry] = await tx.select().from(categories).where(eq(categories.id, id)).limit(1);
       // The eight shared categories are fixed.
       if (!entry || entry.householdId !== household.id || entry.scope !== "personal") return { error: "Not found." };
-      const twin = tx
+      const [twin] = await tx
         .select()
         .from(categories)
         .where(
@@ -140,32 +144,29 @@ export async function renameListEntry(_prev: ActionState, fd: FormData): Promise
             ne(categories.id, id),
           ),
         )
-        .get();
+        .limit(1);
       if (twin) {
-        mergeCategory(tx, id, twin.id);
+        await mergeCategory(tx, id, twin.id);
         return { merged: twin.name };
       }
-      tx.update(categories).set({ name, key }).where(eq(categories.id, id)).run();
+      await tx.update(categories).set({ name, key }).where(eq(categories.id, id));
       return { saved: true };
     }
 
-    if (kind === "grocery_item") {
-      const entry = tx.select().from(groceryItems).where(eq(groceryItems.id, id)).get();
-      if (!entry || entry.householdId !== household.id) return { error: "Not found." };
-      const twin = tx
-        .select()
-        .from(groceryItems)
-        .where(and(eq(groceryItems.householdId, household.id), eq(groceryItems.key, key), ne(groceryItems.id, id)))
-        .get();
-      if (twin) {
-        mergeGroceryItem(tx, id, twin.id);
-        return { merged: twin.name };
-      }
-      tx.update(groceryItems).set({ name, key }).where(eq(groceryItems.id, id)).run();
-      return { saved: true };
+    // grocery_item
+    const [entry] = await tx.select().from(groceryItems).where(eq(groceryItems.id, id)).limit(1);
+    if (!entry || entry.householdId !== household.id) return { error: "Not found." };
+    const [twin] = await tx
+      .select()
+      .from(groceryItems)
+      .where(and(eq(groceryItems.householdId, household.id), eq(groceryItems.key, key), ne(groceryItems.id, id)))
+      .limit(1);
+    if (twin) {
+      await mergeGroceryItem(tx, id, twin.id);
+      return { merged: twin.name };
     }
-
-    return { error: "Unknown list." };
+    await tx.update(groceryItems).set({ name, key }).where(eq(groceryItems.id, id));
+    return { saved: true };
   });
 
   if (!result.error) revalidatePath("/", "layout");
@@ -179,21 +180,22 @@ export async function renameListEntry(_prev: ActionState, fd: FormData): Promise
  */
 export async function deleteListEntry(kind: ListKind, id: string) {
   const { household } = await requireSession();
+  if (!LIST_KINDS.includes(kind) || !isId(id)) return;
 
   if (kind === "store" || kind === "income_source" || kind === "savings_tag") {
-    db.delete(labels).where(and(eq(labels.id, id), eq(labels.householdId, household.id))).run();
+    await db.delete(labels).where(and(eq(labels.id, id), eq(labels.householdId, household.id)));
   } else if (kind === "subcategory") {
-    db.delete(subcategories).where(and(eq(subcategories.id, id), eq(subcategories.householdId, household.id))).run();
+    await db.delete(subcategories).where(and(eq(subcategories.id, id), eq(subcategories.householdId, household.id)));
   } else if (kind === "personal_category") {
-    const used = db.select({ n: count() }).from(expenses).where(eq(expenses.categoryId, id)).get();
+    const [used] = await db.select({ n: count() }).from(expenses).where(eq(expenses.categoryId, id));
     if ((used?.n ?? 0) > 0) return;
-    db.delete(categories)
-      .where(and(eq(categories.id, id), eq(categories.householdId, household.id), eq(categories.scope, "personal")))
-      .run();
+    await db
+      .delete(categories)
+      .where(and(eq(categories.id, id), eq(categories.householdId, household.id), eq(categories.scope, "personal")));
   } else if (kind === "grocery_item") {
-    const used = db.select({ n: count() }).from(groceryListItems).where(eq(groceryListItems.itemId, id)).get();
+    const [used] = await db.select({ n: count() }).from(groceryListItems).where(eq(groceryListItems.itemId, id));
     if ((used?.n ?? 0) > 0) return;
-    db.delete(groceryItems).where(and(eq(groceryItems.id, id), eq(groceryItems.householdId, household.id))).run();
+    await db.delete(groceryItems).where(and(eq(groceryItems.id, id), eq(groceryItems.householdId, household.id)));
   }
 
   revalidatePath("/", "layout");

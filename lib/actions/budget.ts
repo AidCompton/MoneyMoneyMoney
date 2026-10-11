@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { budgetLines, categories, expenses } from "@/db/schema";
 import { requireSession } from "@/lib/auth";
 import { isMonth } from "@/lib/dates";
-import { isISODate, money, str } from "@/lib/form";
+import { MAX_AMOUNT, cents, isISODate, isId, money, str } from "@/lib/form";
 import {
   ensureSharedCategories,
   findOrCreateLabel,
@@ -31,11 +31,14 @@ export async function saveBudgetPlan(_prev: ActionState, fd: FormData): Promise<
   const plan = new Map<string, number>();
   for (const [field, value] of fd.entries()) {
     if (!field.startsWith("plan-")) continue;
+    const categoryId = field.slice(5);
+    if (!isId(categoryId)) return { error: "Some of those categories couldn't be found." };
     const raw = String(value).trim();
     const amount = raw === "" ? 0 : Number(raw.replace(",", "."));
-    if (!Number.isFinite(amount) || amount < 0) return { error: "Amounts must be zero or more." };
-    plan.set(field.slice(5), amount);
+    if (!Number.isFinite(amount) || amount < 0 || amount > MAX_AMOUNT) return { error: "Amounts must be zero or more." };
+    plan.set(categoryId, cents(amount));
   }
+  if (plan.size > 200) return { error: "Too many categories." };
 
   const newName = str(fd, "newCategory");
   const newAmount = money(fd, "newAmount");
@@ -43,50 +46,50 @@ export async function saveBudgetPlan(_prev: ActionState, fd: FormData): Promise<
     return { error: `Give ${newName} a planned amount.` };
   }
 
-  if (!personal) ensureSharedCategories(household.id);
+  if (!personal) await ensureSharedCategories(household.id);
 
-  const error = db.transaction((tx) => {
+  const error = await db.transaction(async (tx) => {
     // Only this household's categories of the right kind can be planned.
     const ids = [...plan.keys()];
-    const valid = new Set(
-      ids.length
-        ? tx
-            .select({ id: categories.id })
-            .from(categories)
-            .where(
-              and(
-                inArray(categories.id, ids),
-                eq(categories.householdId, household.id),
-                eq(categories.scope, personal ? "personal" : "shared"),
-              ),
-            )
-            .all()
-            .map((c) => c.id)
-        : [],
-    );
-    if (valid.size !== ids.length) return "Some of those categories couldn't be found.";
+    const valid = ids.length
+      ? await tx
+          .select({ id: categories.id })
+          .from(categories)
+          .where(
+            and(
+              inArray(categories.id, ids),
+              eq(categories.householdId, household.id),
+              eq(categories.scope, personal ? "personal" : "shared"),
+            ),
+          )
+      : [];
+    if (valid.length !== ids.length) return "Some of those categories couldn't be found.";
 
     if (personal && newName) {
-      const category = findOrCreatePersonalCategory(household.id, newName, tx);
-      if (category) plan.set(category.id, (plan.get(category.id) ?? 0) + (newAmount ?? 0));
+      const category = await findOrCreatePersonalCategory(household.id, newName, tx);
+      if (category) plan.set(category.id, cents((plan.get(category.id) ?? 0) + (newAmount ?? 0)));
     }
 
     for (const [categoryId, amount] of plan) {
-      const where = and(
-        eq(budgetLines.householdId, household.id),
-        owner ? eq(budgetLines.ownerUserId, owner) : isNull(budgetLines.ownerUserId),
-        eq(budgetLines.month, month),
-        eq(budgetLines.categoryId, categoryId),
-      );
-      const existing = tx.select({ id: budgetLines.id }).from(budgetLines).where(where).get();
-      if (amount > 0 && existing) {
-        tx.update(budgetLines).set({ amount }).where(eq(budgetLines.id, existing.id)).run();
-      } else if (amount > 0) {
-        tx.insert(budgetLines)
+      if (amount > 0) {
+        await tx
+          .insert(budgetLines)
           .values({ householdId: household.id, ownerUserId: owner, month, categoryId, amount })
-          .run();
-      } else if (existing) {
-        tx.delete(budgetLines).where(eq(budgetLines.id, existing.id)).run();
+          .onConflictDoUpdate({
+            target: [budgetLines.householdId, budgetLines.ownerUserId, budgetLines.month, budgetLines.categoryId],
+            set: { amount },
+          });
+      } else {
+        await tx
+          .delete(budgetLines)
+          .where(
+            and(
+              eq(budgetLines.householdId, household.id),
+              owner ? eq(budgetLines.ownerUserId, owner) : isNull(budgetLines.ownerUserId),
+              eq(budgetLines.month, month),
+              eq(budgetLines.categoryId, categoryId),
+            ),
+          );
       }
     }
     return null;
@@ -121,12 +124,12 @@ export async function addExpense(_prev: ActionState, fd: FormData): Promise<Acti
     return { error: "Pick a date in the month you're viewing." };
   }
 
-  const error = db.transaction((tx) => {
+  const error = await db.transaction(async (tx) => {
     let category;
     if (personal) {
-      category = findOrCreatePersonalCategory(household.id, categoryField, tx);
-    } else {
-      category = tx
+      category = await findOrCreatePersonalCategory(household.id, categoryField, tx);
+    } else if (isId(categoryField)) {
+      [category] = await tx
         .select()
         .from(categories)
         .where(
@@ -136,28 +139,26 @@ export async function addExpense(_prev: ActionState, fd: FormData): Promise<Acti
             eq(categories.scope, "shared"),
           ),
         )
-        .get();
+        .limit(1);
     }
     if (!category) return "Pick a category.";
 
     const subcategory = subcategoryName
-      ? findOrCreateSubcategory(household.id, category.id, subcategoryName, tx)
+      ? await findOrCreateSubcategory(household.id, category.id, subcategoryName, tx)
       : null;
-    const store = storeName ? findOrCreateLabel(household.id, "store", storeName, tx) : null;
+    const store = storeName ? await findOrCreateLabel(household.id, "store", storeName, tx) : null;
 
-    tx.insert(expenses)
-      .values({
-        householdId: household.id,
-        ownerUserId: personal ? user.id : null,
-        categoryId: category.id,
-        subcategoryId: subcategory?.id ?? null,
-        storeId: store?.id ?? null,
-        userId: user.id,
-        amount,
-        date,
-        description: description || subcategory?.name || store?.name || category.name,
-      })
-      .run();
+    await tx.insert(expenses).values({
+      householdId: household.id,
+      ownerUserId: personal ? user.id : null,
+      categoryId: category.id,
+      subcategoryId: subcategory?.id ?? null,
+      storeId: store?.id ?? null,
+      userId: user.id,
+      amount,
+      date,
+      description: description || subcategory?.name || store?.name || category.name,
+    });
     return null;
   });
   if (error) return { error };
@@ -168,11 +169,12 @@ export async function addExpense(_prev: ActionState, fd: FormData): Promise<Acti
 
 export async function deleteExpense(expenseId: string) {
   const { user, household } = await requireSession();
-  const expense = db.select().from(expenses).where(eq(expenses.id, expenseId)).get();
+  if (!isId(expenseId)) return;
+  const [expense] = await db.select().from(expenses).where(eq(expenses.id, expenseId)).limit(1);
   if (!expense || expense.householdId !== household.id) return;
   // Personal expenses can only be removed by their owner.
   if (expense.ownerUserId && expense.ownerUserId !== user.id) return;
 
-  db.delete(expenses).where(eq(expenses.id, expenseId)).run();
+  await db.delete(expenses).where(eq(expenses.id, expenseId));
   revalidatePath("/", "layout");
 }

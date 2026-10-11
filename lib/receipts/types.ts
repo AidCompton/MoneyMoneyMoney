@@ -1,6 +1,15 @@
-// Shapes passed between the scan endpoint, the review screen and the save action.
+// Shapes passed between the phone (which reads the photo), the server (which
+// makes sense of the text) and the save action.
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
+
+/** What the phone read: text lines with where they sit on the display image. */
+export type ReadLines = {
+  lines: { text: string; confidence: number; bbox: Box }[];
+  /** Size of the display image the boxes refer to. */
+  width: number;
+  height: number;
+};
 
 export type ScannedItem = {
   raw: string;
@@ -18,8 +27,6 @@ export type ScannedItem = {
 };
 
 export type ScanResult = {
-  token: string;
-  image: { src: string; width: number; height: number };
   store: { value: string; sure: boolean; crop: Box | null };
   date: { value: string; sure: boolean };
   total: number | null;
@@ -27,11 +34,12 @@ export type ScanResult = {
 };
 
 export type ReceiptDraft = {
-  token: string | null;
   scope: "shared" | "personal";
   store: string;
   date: string;
   total: number;
+  /** The display photo as a base64 JPEG, or null when typed in by hand. */
+  image: string | null;
   items: {
     raw: string;
     name: string;

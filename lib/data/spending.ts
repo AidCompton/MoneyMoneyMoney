@@ -27,34 +27,33 @@ export async function getSpending({
   filters?: SpendingFilters;
 }) {
   const scope = ownerUserId ? "personal" : "shared";
-  if (scope === "shared") ensureSharedCategories(householdId);
-
-  const cats = db
-    .select()
-    .from(categories)
-    .where(and(eq(categories.householdId, householdId), eq(categories.scope, scope)))
-    .orderBy(asc(categories.colorIndex), asc(categories.createdAt))
-    .all();
+  if (scope === "shared") await ensureSharedCategories(householdId);
 
   const lineOwner = ownerUserId ? eq(budgetLines.ownerUserId, ownerUserId) : isNull(budgetLines.ownerUserId);
   const linesFor = (m: string) =>
     db
       .select()
       .from(budgetLines)
-      .where(and(eq(budgetLines.householdId, householdId), lineOwner, eq(budgetLines.month, m)))
-      .all();
-  const lines = linesFor(month);
-  const previousLines = linesFor(shiftMonth(month, -1));
+      .where(and(eq(budgetLines.householdId, householdId), lineOwner, eq(budgetLines.month, m)));
 
-  const rows = await db.query.expenses.findMany({
-    where: and(
-      eq(expenses.householdId, householdId),
-      ownerUserId ? eq(expenses.ownerUserId, ownerUserId) : isNull(expenses.ownerUserId),
-      like(expenses.date, monthPattern(month)),
-    ),
-    orderBy: [desc(expenses.date), desc(expenses.createdAt)],
-    with: { category: true, subcategory: true, store: true, user: true },
-  });
+  const [cats, lines, previousLines, rows] = await Promise.all([
+    db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.householdId, householdId), eq(categories.scope, scope)))
+      .orderBy(asc(categories.colorIndex), asc(categories.createdAt)),
+    linesFor(month),
+    linesFor(shiftMonth(month, -1)),
+    db.query.expenses.findMany({
+      where: and(
+        eq(expenses.householdId, householdId),
+        ownerUserId ? eq(expenses.ownerUserId, ownerUserId) : isNull(expenses.ownerUserId),
+        like(expenses.date, monthPattern(month)),
+      ),
+      orderBy: [desc(expenses.date), desc(expenses.createdAt)],
+      with: { category: true, subcategory: true, store: true, user: { columns: { id: true, name: true } } },
+    }),
+  ]);
 
   const planned = new Map(lines.map((l) => [l.categoryId, l.amount]));
   const spent = new Map<string, number>();
@@ -77,20 +76,11 @@ export async function getSpending({
   // personal category planned last month is there to fill in again.
   let planCategories = summary.map(({ id, name, color }) => ({ id, name, color }));
   if (scope === "personal" && ownerUserId) {
-    const everUsed = new Set([
-      ...db
-        .selectDistinct({ id: budgetLines.categoryId })
-        .from(budgetLines)
-        .where(eq(budgetLines.ownerUserId, ownerUserId))
-        .all()
-        .map((r) => r.id),
-      ...db
-        .selectDistinct({ id: expenses.categoryId })
-        .from(expenses)
-        .where(eq(expenses.ownerUserId, ownerUserId))
-        .all()
-        .map((r) => r.id),
+    const [plannedEver, spentEver] = await Promise.all([
+      db.selectDistinct({ id: budgetLines.categoryId }).from(budgetLines).where(eq(budgetLines.ownerUserId, ownerUserId)),
+      db.selectDistinct({ id: expenses.categoryId }).from(expenses).where(eq(expenses.ownerUserId, ownerUserId)),
     ]);
+    const everUsed = new Set([...plannedEver, ...spentEver].map((r) => r.id));
     planCategories = cats
       .filter((c) => everUsed.has(c.id))
       .map((c) => ({ id: c.id, name: c.name, color: colorForIndex(c.colorIndex) }));

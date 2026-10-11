@@ -7,7 +7,7 @@ import { categories, expenses, groceryItems, groceryListItems, mealPreps } from 
 import { requireSession } from "@/lib/auth";
 import { FOOD_CATEGORY } from "@/lib/categories";
 import { isMonth } from "@/lib/dates";
-import { isISODate, money, optionalStr, str } from "@/lib/form";
+import { isISODate, isId, money, optionalStr, str } from "@/lib/form";
 import { cleanName, nameKey } from "@/lib/lists";
 import {
   ensureSharedCategories,
@@ -43,19 +43,20 @@ export async function addGroceryLine(_prev: ActionState, fd: FormData): Promise<
   if ("error" in line) return { error: line.error };
 
   if (mealPrepId) {
-    const prep = db.select().from(mealPreps).where(eq(mealPreps.id, mealPrepId)).get();
+    const [prep] = isId(mealPrepId)
+      ? await db.select().from(mealPreps).where(eq(mealPreps.id, mealPrepId)).limit(1)
+      : [];
     if (!prep || prep.householdId !== household.id) return { error: "That meal prep could not be found." };
   }
 
-  db.transaction((tx) => {
-    const item = findOrCreateGroceryItem(household.id, line.name, tx)!;
+  await db.transaction(async (tx) => {
+    const item = (await findOrCreateGroceryItem(household.id, line.name, tx))!;
     // Remember the latest size and price so next time they fill themselves in.
-    tx.update(groceryItems)
+    await tx
+      .update(groceryItems)
       .set({ lastSize: line.size ?? item.lastSize, lastPrice: line.price ?? item.lastPrice })
-      .where(eq(groceryItems.id, item.id))
-      .run();
-    tx.insert(groceryListItems)
-      .values({
+      .where(eq(groceryItems.id, item.id));
+    await tx.insert(groceryListItems).values({
         householdId: household.id,
         month,
         itemId: item.id,
@@ -66,8 +67,7 @@ export async function addGroceryLine(_prev: ActionState, fd: FormData): Promise<
         price: line.price ?? item.lastPrice,
         comment: line.comment,
         addedByUserId: user.id,
-      })
-      .run();
+      });
   });
 
   revalidateGroceries();
@@ -76,7 +76,8 @@ export async function addGroceryLine(_prev: ActionState, fd: FormData): Promise<
 
 async function ownLine(lineId: string) {
   const { household } = await requireSession();
-  const line = db.select().from(groceryListItems).where(eq(groceryListItems.id, lineId)).get();
+  if (!isId(lineId)) return null;
+  const [line] = await db.select().from(groceryListItems).where(eq(groceryListItems.id, lineId)).limit(1);
   return line && line.householdId === household.id ? { line, householdId: household.id } : null;
 }
 
@@ -86,13 +87,14 @@ export async function updateGroceryLine(_prev: ActionState, fd: FormData): Promi
   const line = readLine(fd);
   if ("error" in line) return { error: line.error };
 
-  db.transaction((tx) => {
-    const item = findOrCreateGroceryItem(owned.householdId, line.name, tx)!;
-    tx.update(groceryItems)
+  await db.transaction(async (tx) => {
+    const item = (await findOrCreateGroceryItem(owned.householdId, line.name, tx))!;
+    await tx
+      .update(groceryItems)
       .set({ lastSize: line.size ?? item.lastSize, lastPrice: line.price ?? item.lastPrice })
-      .where(eq(groceryItems.id, item.id))
-      .run();
-    tx.update(groceryListItems)
+      .where(eq(groceryItems.id, item.id));
+    await tx
+      .update(groceryListItems)
       .set({
         itemId: item.id,
         size: line.size,
@@ -100,8 +102,7 @@ export async function updateGroceryLine(_prev: ActionState, fd: FormData): Promi
         price: line.price,
         comment: line.comment,
       })
-      .where(eq(groceryListItems.id, owned.line.id))
-      .run();
+      .where(eq(groceryListItems.id, owned.line.id));
   });
 
   revalidateGroceries();
@@ -111,17 +112,14 @@ export async function updateGroceryLine(_prev: ActionState, fd: FormData): Promi
 export async function toggleGroceryBought(lineId: string) {
   const owned = await ownLine(lineId);
   if (!owned) return;
-  db.update(groceryListItems)
-    .set({ bought: !owned.line.bought })
-    .where(eq(groceryListItems.id, lineId))
-    .run();
+  await db.update(groceryListItems).set({ bought: !owned.line.bought }).where(eq(groceryListItems.id, owned.line.id));
   revalidateGroceries();
 }
 
 export async function deleteGroceryLine(lineId: string) {
   const owned = await ownLine(lineId);
   if (!owned) return;
-  db.delete(groceryListItems).where(eq(groceryListItems.id, lineId)).run();
+  await db.delete(groceryListItems).where(eq(groceryListItems.id, owned.line.id));
   revalidateGroceries();
 }
 
@@ -137,19 +135,19 @@ export async function createMealPrep(_prev: ActionState, fd: FormData): Promise<
   const cookOn = str(fd, "cookOn") || null;
   if (!isMonth(month)) return { error: "Invalid month." };
   if (!name) return { error: "Name the meal prep." };
-  if (!Number.isFinite(dinners) || dinners < 1) return { error: "It should cover at least one dinner." };
+  if (!Number.isFinite(dinners) || dinners < 1 || dinners > 365) return { error: "It should cover 1 to 365 dinners." };
   if (cookOn && !isISODate(cookOn)) return { error: "Pick a valid cook date." };
 
-  db.transaction((tx) => {
+  await db.transaction(async (tx) => {
     const key = nameKey(name);
-    const previous = tx
+    const [previous] = await tx
       .select()
       .from(mealPreps)
       .where(and(eq(mealPreps.householdId, household.id), eq(mealPreps.key, key)))
       .orderBy(desc(mealPreps.createdAt))
-      .get();
+      .limit(1);
 
-    const prep = tx
+    const [prep] = await tx
       .insert(mealPreps)
       .values({
         householdId: household.id,
@@ -158,20 +156,15 @@ export async function createMealPrep(_prev: ActionState, fd: FormData): Promise<
         key,
         dinners,
         cookOn,
-        notes: str(fd, "notes") || previous?.notes || "",
+        notes: str(fd, "notes", 2000) || previous?.notes || "",
       })
-      .returning()
-      .get();
+      .returning();
 
     if (previous) {
-      const ingredients = tx
-        .select()
-        .from(groceryListItems)
-        .where(eq(groceryListItems.mealPrepId, previous.id))
-        .all();
-      for (const i of ingredients) {
-        tx.insert(groceryListItems)
-          .values({
+      const ingredients = await tx.select().from(groceryListItems).where(eq(groceryListItems.mealPrepId, previous.id));
+      if (ingredients.length) {
+        await tx.insert(groceryListItems).values(
+          ingredients.map((i) => ({
             householdId: household.id,
             month,
             itemId: i.itemId,
@@ -181,8 +174,8 @@ export async function createMealPrep(_prev: ActionState, fd: FormData): Promise<
             price: i.price,
             comment: i.comment,
             addedByUserId: user.id,
-          })
-          .run();
+          })),
+        );
       }
     }
   });
@@ -193,37 +186,39 @@ export async function createMealPrep(_prev: ActionState, fd: FormData): Promise<
 
 export async function updateMealPrep(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const { household } = await requireSession();
-  const prep = db.select().from(mealPreps).where(eq(mealPreps.id, str(fd, "mealPrepId"))).get();
+  const prepId = str(fd, "mealPrepId");
+  const [prep] = isId(prepId) ? await db.select().from(mealPreps).where(eq(mealPreps.id, prepId)).limit(1) : [];
   if (!prep || prep.householdId !== household.id) return { error: "That meal prep could not be found." };
   const name = cleanName(str(fd, "name"));
   const dinners = Math.round(Number(str(fd, "dinners") || 1));
   const cookOn = str(fd, "cookOn") || null;
   if (!name) return { error: "Name the meal prep." };
-  if (!Number.isFinite(dinners) || dinners < 1) return { error: "It should cover at least one dinner." };
+  if (!Number.isFinite(dinners) || dinners < 1 || dinners > 365) return { error: "It should cover 1 to 365 dinners." };
   if (cookOn && !isISODate(cookOn)) return { error: "Pick a valid cook date." };
 
-  db.update(mealPreps)
-    .set({ name, key: nameKey(name), dinners, cookOn, notes: str(fd, "notes") })
-    .where(eq(mealPreps.id, prep.id))
-    .run();
+  await db
+    .update(mealPreps)
+    .set({ name, key: nameKey(name), dinners, cookOn, notes: str(fd, "notes", 2000) })
+    .where(eq(mealPreps.id, prep.id));
   revalidateGroceries();
   return { saved: true };
 }
 
 export async function deleteMealPrep(mealPrepId: string) {
   const { household } = await requireSession();
-  const prep = db.select().from(mealPreps).where(eq(mealPreps.id, mealPrepId)).get();
+  if (!isId(mealPrepId)) return;
+  const [prep] = await db.select().from(mealPreps).where(eq(mealPreps.id, mealPrepId)).limit(1);
   if (!prep || prep.householdId !== household.id) return;
   // Its ingredients go with it (ON DELETE CASCADE).
-  db.delete(mealPreps).where(eq(mealPreps.id, mealPrepId)).run();
+  await db.delete(mealPreps).where(eq(mealPreps.id, prep.id));
   revalidateGroceries();
 }
 
 /** Copies another month's general list (not meal preps) into this month, unticked. */
 export async function copyGeneralList(month: string, fromMonth: string) {
   const { user, household } = await requireSession();
-  if (!isMonth(month) || !isMonth(fromMonth)) return;
-  const lines = db
+  if (!isMonth(month) || !isMonth(fromMonth) || month === fromMonth) return;
+  const lines = await db
     .select()
     .from(groceryListItems)
     .where(
@@ -232,11 +227,9 @@ export async function copyGeneralList(month: string, fromMonth: string) {
         eq(groceryListItems.month, fromMonth),
         isNull(groceryListItems.mealPrepId),
       ),
-    )
-    .all();
+    );
   if (!lines.length) return;
-  db.insert(groceryListItems)
-    .values(
+  await db.insert(groceryListItems).values(
       lines.map((l) => ({
         householdId: household.id,
         month,
@@ -248,8 +241,7 @@ export async function copyGeneralList(month: string, fromMonth: string) {
         comment: l.comment,
         addedByUserId: user.id,
       })),
-    )
-    .run();
+    );
   revalidateGroceries();
 }
 
@@ -264,9 +256,9 @@ export async function logGroceryShop(_prev: ActionState, fd: FormData): Promise<
   if (amount === null || Number.isNaN(amount) || amount <= 0) return { error: "Amount must be a positive number." };
   if (!isISODate(date)) return { error: "Pick the date of the shop." };
 
-  ensureSharedCategories(household.id);
-  db.transaction((tx) => {
-    const food = tx
+  await ensureSharedCategories(household.id);
+  await db.transaction(async (tx) => {
+    const [food] = await tx
       .select()
       .from(categories)
       .where(
@@ -276,11 +268,10 @@ export async function logGroceryShop(_prev: ActionState, fd: FormData): Promise<
           eq(categories.key, nameKey(FOOD_CATEGORY)),
         ),
       )
-      .get()!;
-    const store = findOrCreateLabel(household.id, "store", str(fd, "store"), tx);
-    const subcategory = findOrCreateSubcategory(household.id, food.id, str(fd, "subcategory"), tx);
-    tx.insert(expenses)
-      .values({
+      .limit(1);
+    const store = await findOrCreateLabel(household.id, "store", str(fd, "store"), tx);
+    const subcategory = await findOrCreateSubcategory(household.id, food.id, str(fd, "subcategory"), tx);
+    await tx.insert(expenses).values({
         householdId: household.id,
         ownerUserId: null,
         categoryId: food.id,
@@ -290,8 +281,7 @@ export async function logGroceryShop(_prev: ActionState, fd: FormData): Promise<
         amount,
         date,
         description: store ? `Grocery shop at ${store.name}` : "Grocery shop",
-      })
-      .run();
+      });
   });
 
   revalidatePath("/", "layout");

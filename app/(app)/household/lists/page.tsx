@@ -7,7 +7,7 @@ import { ListEntry } from "@/components/lists/ListEntry";
 
 export default async function ListsPage() {
   const { household } = await requireSession();
-  const lists = getListsForManagement(household.id);
+  const lists = await getListsForManagement(household.id);
   const labelsOf = (kind: string) => lists.labels.filter((l) => l.kind === kind);
   const shared = lists.categories.filter((c) => c.scope === "shared");
   const personal = lists.categories.filter((c) => c.scope === "personal");

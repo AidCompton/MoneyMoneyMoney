@@ -26,7 +26,7 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
       "Household name": "The Test Household",
       "Your name": "Aid",
       Email: `test-${stamp}@example.com`,
-      Password: "password123",
+      Password: "Tidy-Ledger-2026",
     },
     "Create household",
   );
@@ -114,11 +114,16 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
 
   // Partner joins with the code shown on the household page.
   await page.getByRole("link", { name: "Household" }).first().click();
-  await page.getByRole("button", { name: "Back up now" }).click();
-  await expect(page.getByText("✓ Saved a backup")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Download" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download everything" })).toBeVisible();
+  // The export has the household's data and never a password hash.
+  const exported = await page.request.get("/api/export");
+  expect(exported.ok()).toBeTruthy();
+  const exportText = await exported.text();
+  expect(JSON.parse(exportText).savingsGoals[0].name).toBe("Joint Year-End Goal");
+  expect(exportText).not.toContain("passwordHash");
+  expect(exportText).not.toContain("$2b$");
   const joinCode = (await page.getByLabel("Join code").textContent())?.trim() ?? "";
-  expect(joinCode).toMatch(/^[A-Z0-9]{6}$/);
+  expect(joinCode).toMatch(/^[A-Z0-9]{8}$/);
 
   const partnerContext = await browser.newContext();
   const partner = await partnerContext.newPage();
@@ -131,7 +136,7 @@ test("register, track a goal, log a budget, run a meeting, invite a partner", as
       "Join code": joinCode.toLowerCase(),
       "Your name": "Sam",
       Email: `partner-${stamp}@example.com`,
-      Password: "password123",
+      Password: "Tidy-Ledger-2026",
     },
     "Join household",
   );

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { incomes, sharedContributions } from "@/db/schema";
 import { requireSession } from "@/lib/auth";
-import { isISODate, money, optionalStr, str } from "@/lib/form";
+import { isISODate, isId, money, optionalStr, str } from "@/lib/form";
 import { findOrCreateLabel } from "@/lib/data/lists";
 
 export type ActionState = { error?: string; saved?: boolean };
@@ -23,18 +23,16 @@ export async function addIncome(_prev: ActionState, fd: FormData): Promise<Actio
   const invalid = checkAmountAndDate(amount, date);
   if (invalid) return { error: invalid };
 
-  db.transaction((tx) => {
-    const source = findOrCreateLabel(household.id, "income_source", str(fd, "source"), tx);
-    tx.insert(incomes)
-      .values({
-        householdId: household.id,
-        userId: user.id,
-        sourceId: source?.id ?? null,
-        amount: amount!,
-        date,
-        note: optionalStr(fd, "note"),
-      })
-      .run();
+  await db.transaction(async (tx) => {
+    const source = await findOrCreateLabel(household.id, "income_source", str(fd, "source"), tx);
+    await tx.insert(incomes).values({
+      householdId: household.id,
+      userId: user.id,
+      sourceId: source?.id ?? null,
+      amount: amount!,
+      date,
+      note: optionalStr(fd, "note"),
+    });
   });
 
   revalidatePath("/", "layout");
@@ -43,9 +41,10 @@ export async function addIncome(_prev: ActionState, fd: FormData): Promise<Actio
 
 export async function deleteIncome(incomeId: string) {
   const { user } = await requireSession();
-  const income = db.select().from(incomes).where(eq(incomes.id, incomeId)).get();
+  if (!isId(incomeId)) return;
+  const [income] = await db.select().from(incomes).where(eq(incomes.id, incomeId)).limit(1);
   if (!income || income.userId !== user.id) return;
-  db.delete(incomes).where(eq(incomes.id, incomeId)).run();
+  await db.delete(incomes).where(eq(incomes.id, incomeId));
   revalidatePath("/", "layout");
 }
 
@@ -57,9 +56,9 @@ export async function addSharedContribution(_prev: ActionState, fd: FormData): P
   const invalid = checkAmountAndDate(amount, date);
   if (invalid) return { error: invalid };
 
-  db.insert(sharedContributions)
-    .values({ householdId: household.id, userId: user.id, amount: amount!, date, note: optionalStr(fd, "note") })
-    .run();
+  await db
+    .insert(sharedContributions)
+    .values({ householdId: household.id, userId: user.id, amount: amount!, date, note: optionalStr(fd, "note") });
 
   revalidatePath("/", "layout");
   return { saved: true };
@@ -67,8 +66,9 @@ export async function addSharedContribution(_prev: ActionState, fd: FormData): P
 
 export async function deleteSharedContribution(contributionId: string) {
   const { user } = await requireSession();
-  const row = db.select().from(sharedContributions).where(eq(sharedContributions.id, contributionId)).get();
+  if (!isId(contributionId)) return;
+  const [row] = await db.select().from(sharedContributions).where(eq(sharedContributions.id, contributionId)).limit(1);
   if (!row || row.userId !== user.id) return;
-  db.delete(sharedContributions).where(eq(sharedContributions.id, contributionId)).run();
+  await db.delete(sharedContributions).where(eq(sharedContributions.id, contributionId));
   revalidatePath("/", "layout");
 }

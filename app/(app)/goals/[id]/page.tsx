@@ -23,7 +23,7 @@ export default async function GoalDetailPage({
 }) {
   const { id } = await params;
   const { household } = await requireSession();
-  const result = await getGoalWithContributions(id);
+  const result = await getGoalWithContributions(id, household.id);
 
   if (!result || result.goal.householdId !== household.id) {
     notFound();

@@ -12,7 +12,7 @@ import { getSpending } from "./spending";
 /** Shared and personal money for the month, added up for the whole household. */
 export async function getHouseholdOverview(householdId: string, month: string) {
   const members = await getHouseholdMembers(householdId);
-  const [shared, goals, people] = await Promise.all([
+  const [shared, goals, people, goalRows, contributionRows, jointSavings] = await Promise.all([
     getSpending({ householdId, ownerUserId: null, month }),
     getGoalsWithProgress(householdId),
     Promise.all(
@@ -20,20 +20,19 @@ export async function getHouseholdOverview(householdId: string, month: string) {
         id: m.id,
         name: m.name,
         ...(await getPersonalTotals(householdId, m.id, month)),
-        savingsBalance: totalSavingsBalance(m.id),
+        savingsBalance: await totalSavingsBalance(m.id),
       })),
     ),
+    db
+      .select({ amount: goalContributions.amount })
+      .from(goalContributions)
+      .innerJoin(savingsGoals, eq(savingsGoals.id, goalContributions.goalId))
+      .where(and(eq(savingsGoals.householdId, householdId), like(goalContributions.date, monthPattern(month)))),
+    getContributionsForMonth(householdId, month),
+    totalJointSavingsBalance(householdId),
   ]);
 
-  const goalSavedThisMonth = db
-    .select({ amount: goalContributions.amount })
-    .from(goalContributions)
-    .innerJoin(savingsGoals, eq(savingsGoals.id, goalContributions.goalId))
-    .where(and(eq(savingsGoals.householdId, householdId), like(goalContributions.date, monthPattern(month))))
-    .all()
-    .reduce((sum, c) => sum + c.amount, 0);
-
-  const contributionRows = getContributionsForMonth(householdId, month);
+  const goalSavedThisMonth = goalRows.reduce((sum, c) => sum + c.amount, 0);
   const contributed = contributionRows.reduce((sum, c) => sum + c.amount, 0);
 
   const sum = (pick: (p: (typeof people)[number]) => number) => people.reduce((total, p) => total + pick(p), 0);
@@ -46,7 +45,6 @@ export async function getHouseholdOverview(householdId: string, month: string) {
 
   const goalsSaved = goals.reduce((total, g) => total + g.saved, 0);
   const personalSavings = sum((p) => p.savingsBalance);
-  const jointSavings = totalJointSavingsBalance(householdId);
 
   return {
     shared,

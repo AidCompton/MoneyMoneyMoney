@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { canCreateHousehold } from "@/lib/auth";
 import { Card } from "@/components/ui/Card";
 import { CreateHouseholdForm, JoinHouseholdForm } from "@/components/auth/RegisterForms";
 
@@ -29,22 +30,31 @@ function Tab({ href, active, children }: { href: string; active: boolean; childr
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
   const code = params.code?.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 12) || undefined;
-  const joining = params.join !== undefined || !!code;
+  // Only the first household can be created here; after that, only joining.
+  const canCreate = await canCreateHousehold();
+  const joining = !canCreate || params.join !== undefined || !!code;
 
   return (
     <Card className="p-8 sm:p-10">
       <h2 className="text-2xl font-semibold tracking-tight">Get started</h2>
       <p className="mt-1 mb-6 text-sm text-ivory/55">
-        One of you creates the household; the other joins with its code.
+        {canCreate
+          ? "One of you creates the household; the other joins with its code."
+          : "Join your household with the code on its Household page."}
       </p>
-      <nav aria-label="Sign-up options" className="mb-8 flex rounded-full bg-white/[0.05] p-1 ring-1 ring-inset ring-white/10">
-        <Tab href="/register" active={!joining}>
-          New household
-        </Tab>
-        <Tab href={code ? `/register?code=${code}` : "/register?join"} active={joining}>
-          Join a household
-        </Tab>
-      </nav>
+      {canCreate && (
+        <nav
+          aria-label="Sign-up options"
+          className="mb-8 flex rounded-full bg-white/[0.05] p-1 ring-1 ring-inset ring-white/10"
+        >
+          <Tab href="/register" active={!joining}>
+            New household
+          </Tab>
+          <Tab href={code ? `/register?code=${code}` : "/register?join"} active={joining}>
+            Join a household
+          </Tab>
+        </nav>
+      )}
       {joining ? <JoinHouseholdForm code={code} /> : <CreateHouseholdForm />}
       <p className="mt-6 text-center text-sm text-ivory/55">
         Already have an account?{" "}

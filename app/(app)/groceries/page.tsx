@@ -29,14 +29,18 @@ export default async function GroceriesPage({ searchParams }: { searchParams: Pr
   const month = monthParam(params.month);
   const show = params.show ?? "all";
   const hideBought = params.hide === "bought";
-  const data = await getGroceryMonth(household.id, month);
+  const [data, sharedSubs, storeOptions] = await Promise.all([
+    getGroceryMonth(household.id, month),
+    getSubcategoryOptions(household.id, "shared"),
+    getLabelOptions(household.id, "store"),
+  ]);
   const monthName = formatMonth(month).split(" ")[0];
 
   const { totals, food } = data;
   const boughtPercent = totals.count ? Math.round((totals.boughtCount / totals.count) * 100) : 0;
   const dinners = data.mealPreps.reduce((sum, p) => sum + p.dinners, 0);
   const prepTotal = data.mealPreps.reduce((sum, p) => sum + p.totals.planned, 0);
-  const foodSubcategories = getSubcategoryOptions(household.id, "shared")[nameKey(FOOD_CATEGORY)] ?? [];
+  const foodSubcategories = sharedSubs[nameKey(FOOD_CATEGORY)] ?? [];
 
   const filterParams = { month, show: show === "all" ? undefined : show, hide: hideBought ? "bought" : undefined };
   const chip = (label: string, value: string, count: number) => {
@@ -232,7 +236,7 @@ export default async function GroceriesPage({ searchParams }: { searchParams: Pr
             </p>
             <LogShopForm
               suggested={totals.bought || totals.planned}
-              stores={getLabelOptions(household.id, "store")}
+              stores={storeOptions}
               subcategories={foodSubcategories}
             />
           </Card>

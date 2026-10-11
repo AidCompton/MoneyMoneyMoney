@@ -32,7 +32,7 @@ export function CreateHouseholdForm() {
       </div>
       <div>
         <Label htmlFor="password">Password</Label>
-        <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
+        <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
       </div>
       <FormError message={state.error} />
       <SubmitButton className="w-full" size="lg" pendingText="Creating…">
@@ -73,7 +73,7 @@ export function JoinHouseholdForm({ code }: { code?: string }) {
       </div>
       <div>
         <Label htmlFor="password">Password</Label>
-        <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
+        <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
       </div>
       <FormError message={state.error} />
       <SubmitButton className="w-full" size="lg" pendingText="Joining…">

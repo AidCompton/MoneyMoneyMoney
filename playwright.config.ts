@@ -13,13 +13,10 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: "npm run dev -- -p 3100",
+    // A throwaway local Postgres plus `next dev`, so tests never touch real data.
+    command: "node scripts/copy-ocr-assets.mjs && node scripts/test-server.mjs --port 3100",
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
-    timeout: 60_000,
-    env: {
-      // isolated DB file so the smoke test never touches real household data
-      DATABASE_DIR: "data-e2e",
-    },
+    timeout: 120_000,
   },
 });

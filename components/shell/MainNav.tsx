@@ -36,7 +36,7 @@ export function MainNav({ userId, compact = false }: { userId: string; compact?:
 
       const onResize = () => move(false);
       window.addEventListener("resize", onResize);
-      document.fonts?.ready.then(() => move(false));
+      void document.fonts?.ready.then(() => move(false));
       return () => window.removeEventListener("resize", onResize);
     },
     { dependencies: [space], scope: nav },

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState, useTransition } from "react";
-import { saveReceipt } from "@/lib/actions/receipts";
+import { readReceipt, saveReceipt } from "@/lib/actions/receipts";
+import { blobToBase64, preparePhoto, readText, type ReadProgress } from "@/lib/receipts/ocr-client";
 import { formatPrice } from "@/lib/currency";
 import { todayISO } from "@/lib/dates";
 import { nameKey } from "@/lib/lists";
@@ -38,25 +39,13 @@ type Check = { id: string; label: string; target: string };
 const cents = (value: string) => Math.round((Number(value.replace(",", ".")) || 0) * 100);
 const money = (c: number) => (c < 0 ? "-" : "") + formatPrice(Math.abs(c) / 100);
 
-/** Downscales a phone photo before upload (smaller, faster, and upright). */
-async function shrink(file: File): Promise<Blob> {
-  try {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const scale = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(img.naturalWidth * scale);
-    canvas.height = Math.round(img.naturalHeight * scale);
-    canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-    URL.revokeObjectURL(url);
-    return await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("encode"))), "image/jpeg", 0.9),
-    );
-  } catch {
-    return file; // the server can read most formats itself
-  }
+type Photo = { blob: Blob; url: string; width: number; height: number };
+
+/** What the reader is doing, in words. */
+function describe(p: ReadProgress | null) {
+  if (!p) return "Getting your photo ready…";
+  if (p.status === "recognizing text") return `Reading your receipt… ${Math.round(p.progress * 100)}%`;
+  return "Getting the reader ready… (the first time takes a little longer)";
 }
 
 /**
@@ -82,6 +71,8 @@ export function ReceiptScanner({
 }) {
   const [phase, setPhase] = useState<"pick" | "reading" | "review" | "saved">("pick");
   const [preview, setPreview] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<Photo | null>(null);
+  const [progress, setProgress] = useState<ReadProgress | null>(null);
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [scope, setScope] = useState<Scope>(defaultScope);
   const [store, setStore] = useState("");
@@ -96,19 +87,24 @@ export function ReceiptScanner({
 
   // --- Reading ---------------------------------------------------------------
 
+  // The photo is read right here on the phone; only the text that was read
+  // goes to the server to be made sense of.
   async function read(file: File) {
     setError(null);
+    setProgress(null);
+    if (preview) URL.revokeObjectURL(preview);
     setPreview(URL.createObjectURL(file));
     setPhase("reading");
     try {
-      const body = new FormData();
-      body.append("photo", await shrink(file), "receipt.jpg");
-      const response = await fetch("/api/receipts/scan", { method: "POST", body });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "The receipt couldn't be read.");
-      begin(result as ScanResult);
+      const prepared = await preparePhoto(file);
+      const lines = await readText(prepared, setProgress);
+      const result = await readReceipt(lines);
+      if (result.error || !result.scan) throw new Error(result.error ?? "The receipt couldn't be read.");
+      if (photo) URL.revokeObjectURL(photo.url);
+      setPhoto({ blob: prepared.display, url: prepared.displayUrl, width: prepared.width, height: prepared.height });
+      begin(result.scan);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The receipt couldn't be read.");
+      setError(e instanceof Error && e.message ? e.message : "The receipt couldn't be read.");
       setPhase("pick");
     }
   }
@@ -140,9 +136,8 @@ export function ReceiptScanner({
   }
 
   function startBlank() {
+    setPhoto(null);
     begin({
-      token: "",
-      image: { src: "", width: 0, height: 0 },
       store: { value: "", sure: false, crop: null },
       date: { value: todayISO(), sure: true },
       total: null,
@@ -212,8 +207,7 @@ export function ReceiptScanner({
 
   function save() {
     setError(null);
-    const draft: ReceiptDraft = {
-      token: scan?.token || null,
+    const draft: Omit<ReceiptDraft, "image"> = {
       scope,
       store,
       date,
@@ -228,7 +222,8 @@ export function ReceiptScanner({
       })),
     };
     startSaving(async () => {
-      const result = await saveReceipt(draft);
+      const image = photo ? await blobToBase64(photo.blob) : null;
+      const result = await saveReceipt({ ...draft, image });
       if (result.error || !result.receiptId) {
         setError(result.error ?? "It couldn't be saved. Please try again.");
         return;
@@ -239,6 +234,9 @@ export function ReceiptScanner({
   }
 
   function reset() {
+    if (preview) URL.revokeObjectURL(preview);
+    if (photo) URL.revokeObjectURL(photo.url);
+    setPhoto(null);
     setPhase("pick");
     setScan(null);
     setRows([]);
@@ -276,8 +274,7 @@ export function ReceiptScanner({
           </label>
         </div>
         <p className="text-sm text-ivory/50">
-          Lay the receipt flat in good light and fill the frame. It&apos;s read on your own computer; the photo never
-          leaves home.{" "}
+          Lay the receipt flat in good light and fill the frame. It&apos;s read right here on your phone.{" "}
           <button type="button" onClick={startBlank} className="font-semibold text-gold hover:underline">
             Or type it in
           </button>
@@ -305,7 +302,7 @@ export function ReceiptScanner({
           />
         </div>
         <p role="status" className="text-sm font-semibold text-mint">
-          Reading your receipt…
+          {describe(progress)}
         </p>
       </div>
     );
@@ -348,7 +345,7 @@ export function ReceiptScanner({
   }
 
   // Review
-  const image = scan?.image;
+  const image = photo ? { src: photo.url, width: photo.width, height: photo.height } : null;
   const categoryOptions = personalCategories.map((c) => ({ value: c.name, color: c.color }));
 
   return (

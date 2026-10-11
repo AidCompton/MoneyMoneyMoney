@@ -14,7 +14,7 @@ export async function getPersonalMonth(
   month: string,
   filters: SpendingFilters = {},
 ) {
-  const [spending, incomeRows, contributionRows] = await Promise.all([
+  const [spending, incomeRows, contributionRows, saved] = await Promise.all([
     getSpending({ householdId, ownerUserId: userId, month, filters }),
     db.query.incomes.findMany({
       where: and(eq(incomes.userId, userId), like(incomes.date, monthPattern(month))),
@@ -25,12 +25,13 @@ export async function getPersonalMonth(
       where: and(eq(sharedContributions.userId, userId), like(sharedContributions.date, monthPattern(month))),
       orderBy: [desc(sharedContributions.date), desc(sharedContributions.createdAt)],
     }),
+    savedInMonth(userId, month),
   ]);
 
   const flow = personalFlow({
     income: incomeRows.reduce((sum, i) => sum + i.amount, 0),
     spent: spending.totalSpent,
-    saved: savedInMonth(userId, month),
+    saved,
     contributed: contributionRows.reduce((sum, c) => sum + c.amount, 0),
   });
 
@@ -55,7 +56,7 @@ export async function getPersonalTotals(householdId: string, userId: string, mon
 }
 
 /** Everything paid into the shared pot this month, per person. */
-export function getContributionsForMonth(householdId: string, month: string) {
+export async function getContributionsForMonth(householdId: string, month: string) {
   return db
     .select({ userId: sharedContributions.userId, amount: sharedContributions.amount })
     .from(sharedContributions)
@@ -64,6 +65,5 @@ export function getContributionsForMonth(householdId: string, month: string) {
         eq(sharedContributions.householdId, householdId),
         like(sharedContributions.date, monthPattern(month)),
       ),
-    )
-    .all();
+    );
 }

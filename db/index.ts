@@ -1,64 +1,72 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { readMigrationFiles } from "drizzle-orm/migrator";
-import Database from "better-sqlite3";
-import path from "node:path";
-import fs from "node:fs";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import * as schema from "./schema";
 
-export const dataDir = path.join(/* turbopackIgnore: true */ process.cwd(), process.env.DATABASE_DIR ?? "data");
-fs.mkdirSync(dataDir, { recursive: true });
+export type DB = PostgresJsDatabase<typeof schema>;
 
-export const sqlite = new Database(path.join(dataDir, "app.db"));
-sqlite.pragma("journal_mode = WAL");
-// Wait for another process (say, a parallel build worker) to finish writing.
-sqlite.pragma("busy_timeout = 10000");
-sqlite.pragma("foreign_keys = ON");
+// Two ways this app reaches Postgres:
+//
+// - On Cloudflare Workers, through the Hyperdrive binding, which keeps a pool
+//   of connections next to the database. A Worker can't reuse a connection
+//   from one request in another, so each request gets its own client
+//   (cheap: Hyperdrive does the expensive connecting).
+// - Everywhere else (`npm run dev`, tests, scripts), DATABASE_URL with one
+//   shared pool for the whole process.
+//
+// Migrations are not applied here: run `npm run db:migrate` (see README.md).
 
-export const db = drizzle(sqlite, { schema });
+const onWorkers = typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
 
-const migrationsFolder = path.join(process.cwd(), "db/migrations");
+let processDb: DB | undefined;
+const requestDbs = new WeakMap<object, DB>();
 
-/**
- * Applies pending migrations. This follows drizzle's own migrator, with two
- * differences:
- *
- * - Everything happens inside one `BEGIN IMMEDIATE` transaction. `next build`
- *   loads this file in several processes at once, and drizzle checks for
- *   pending migrations before taking a lock, so two processes could both try
- *   to apply the same one. Here the second waits for the first, then sees it
- *   is already applied.
- * - Each recorded migration is re-stamped with its journal timestamp,
- *   matched by content. Drizzle only applies migrations newer than the newest
- *   one recorded, and one journal entry was once written with a made-up
- *   future timestamp (since corrected), so a database that recorded it would
- *   otherwise skip every later migration.
- */
-function migrateDatabase() {
-  const migrations = readMigrationFiles({ migrationsFolder });
-  sqlite.exec("BEGIN IMMEDIATE");
-  try {
-    sqlite.exec(
-      "CREATE TABLE IF NOT EXISTS __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)",
-    );
-    const restamp = sqlite.prepare("UPDATE __drizzle_migrations SET created_at = ? WHERE hash = ? AND created_at <> ?");
-    for (const m of migrations) restamp.run(m.folderMillis, m.hash, m.folderMillis);
-
-    const last = sqlite.prepare("SELECT MAX(created_at) AS at FROM __drizzle_migrations").get() as {
-      at: number | null;
-    };
-    const record = sqlite.prepare("INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)");
-    for (const m of migrations) {
-      if (last.at !== null && Number(last.at) >= m.folderMillis) continue;
-      for (const stmt of m.sql) if (stmt.trim()) sqlite.exec(stmt);
-      record.run(m.hash, m.folderMillis);
-    }
-    sqlite.exec("COMMIT");
-  } catch (e) {
-    sqlite.exec("ROLLBACK");
-    throw e;
-  }
+function connect(url: string, options: postgres.Options<Record<string, postgres.PostgresType>>): DB {
+  return drizzle(postgres(url, { onnotice: () => {}, ...options }), { schema });
 }
 
-// Apply any pending migrations automatically so the app runs with zero setup
-// beyond `npm install` - there is no separate server to run `db:migrate` on.
-migrateDatabase();
+function currentDb(): DB {
+  if (onWorkers) {
+    const { env, ctx } = getCloudflareContext();
+    let requestDb = requestDbs.get(ctx);
+    if (!requestDb) {
+      const url = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
+      if (!url) throw new Error("No database configured: add the HYPERDRIVE binding (see docs/deploy.md).");
+      requestDb = connect(url, {
+        // Workers allow six open connections per request.
+        max: 5,
+        // Every column type here is built in, so skip the type lookup round trip.
+        fetch_types: false,
+        // Hyperdrive caches prepared statements; a plain DATABASE_URL to the
+        // Supabase transaction pooler (port 6543) can't use them.
+        prepare: !!env.HYPERDRIVE,
+      });
+      requestDbs.set(ctx, requestDb);
+    }
+    return requestDb;
+  }
+
+  if (!processDb) {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      throw new Error("DATABASE_URL is not set. For local development run `npm run db:local` (see README.md).");
+    }
+    processDb = connect(url, { max: 10, prepare: !url.includes(":6543") });
+  }
+  return processDb;
+}
+
+/**
+ * The database. Use it like any Drizzle database (`db.select()...`); it
+ * resolves to the right connection for wherever the code is running.
+ */
+export const db: DB = new Proxy({} as DB, {
+  get(_target, property) {
+    const real = currentDb();
+    const value = Reflect.get(real, property, real);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
+
+/** Anything that can run queries: the db itself or a transaction. */
+export type Queryable = Pick<DB, "select" | "insert" | "update" | "delete">;

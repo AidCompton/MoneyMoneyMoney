@@ -1,30 +1,12 @@
 import "server-only";
-import fs from "node:fs";
-import path from "node:path";
-import { and, desc, eq, isNull, count } from "drizzle-orm";
-import { dataDir, db } from "@/db";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { db } from "@/db";
 import { categories, expenses, labels, receiptAliases, subcategories } from "@/db/schema";
 import { FOOD_CATEGORY } from "@/lib/categories";
 import { nameKey } from "@/lib/lists";
 import { ensureSharedCategories } from "@/lib/data/lists";
-import type { Box, ScanResult } from "./types";
-import { parseReceipt, tidyName } from "./parse";
-import { readReceiptImage } from "./ocr";
-
-// Photos: data/receipts/<receipt id>.jpg once saved, data/receipts/tmp while
-// being reviewed (tidied up after a day).
-export const receiptsDir = () => path.join(dataDir, "receipts");
-const tmpDir = () => path.join(receiptsDir(), "tmp");
-export const TOKEN = /^[0-9a-f-]{36}$/;
-
-function clearOldTemp() {
-  if (!fs.existsSync(tmpDir())) return;
-  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  for (const file of fs.readdirSync(tmpDir())) {
-    const full = path.join(tmpDir(), file);
-    if (fs.statSync(full).mtimeMs < dayAgo) fs.rmSync(full, { force: true });
-  }
-}
+import type { Box, ReadLines, ScanResult } from "./types";
+import { parseReceipt, tidyName, type OcrLine } from "./parse";
 
 /** The key a receipt line is remembered by: its tidied name, without digits noise. */
 export function aliasKey(raw: string) {
@@ -41,66 +23,83 @@ function union(boxes: Box[]): Box | null {
   };
 }
 
-/** Reads a photo and prepares everything the review screen needs. */
-export async function scanReceipt(householdId: string, userId: string, photo: Buffer): Promise<ScanResult> {
-  const read = await readReceiptImage(photo);
+const MAX_LINES = 400;
+const MAX_SIDE = 10_000;
+const finite = (n: unknown, max: number) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= max;
 
-  const knownStores = db
-    .select({ name: labels.name })
-    .from(labels)
-    .where(and(eq(labels.householdId, householdId), eq(labels.kind, "store")))
-    .all()
-    .map((l) => l.name);
-  const parsed = parseReceipt(read.lines, knownStores);
+/**
+ * Checks what the phone sent before trusting any of it: a sensible number of
+ * short lines with boxes inside the image. Returns null if it doesn't look
+ * like OCR output.
+ */
+export function cleanReadLines(input: unknown): (ReadLines & { lines: OcrLine[] }) | null {
+  if (!input || typeof input !== "object") return null;
+  const { lines, width, height } = input as Partial<ReadLines>;
+  if (!finite(width, MAX_SIDE) || !finite(height, MAX_SIDE) || !Array.isArray(lines) || lines.length > MAX_LINES) {
+    return null;
+  }
+  const clean: OcrLine[] = [];
+  for (const line of lines) {
+    if (!line || typeof line.text !== "string" || !finite(line.confidence, 100) || !line.bbox) return null;
+    const { x0, y0, x1, y1 } = line.bbox;
+    if (![x0, x1].every((v) => finite(v, width!)) || ![y0, y1].every((v) => finite(v, height!))) return null;
+    clean.push({ text: line.text.slice(0, 300), confidence: line.confidence, bbox: { x0, y0, x1, y1 } });
+  }
+  return { lines: clean, width: width!, height: height! };
+}
+
+/** Makes sense of the text the phone read, and suggests what each line is. */
+export async function prepareReceipt(householdId: string, userId: string, read: ReadLines & { lines: OcrLine[] }): Promise<ScanResult> {
+  await ensureSharedCategories(householdId);
+
+  const [storeRows, aliases, cats, subs] = await Promise.all([
+    db
+      .select({ name: labels.name })
+      .from(labels)
+      .where(and(eq(labels.householdId, householdId), eq(labels.kind, "store"))),
+    db.select().from(receiptAliases).where(eq(receiptAliases.householdId, householdId)),
+    db.select().from(categories).where(eq(categories.householdId, householdId)),
+    db.select().from(subcategories).where(eq(subcategories.householdId, householdId)),
+  ]);
+  const parsed = parseReceipt(
+    read.lines,
+    storeRows.map((l) => l.name),
+  );
   const storeName = parsed.store.value ?? "";
-
-  // What each line was last time, per budget.
-  const aliases = db.select().from(receiptAliases).where(eq(receiptAliases.householdId, householdId)).all();
-  const cats = db.select().from(categories).where(eq(categories.householdId, householdId)).all();
-  const subs = db.select().from(subcategories).where(eq(subcategories.householdId, householdId)).all();
   const catName = (id: string | null) => cats.find((c) => c.id === id)?.name ?? "";
   const subName = (id: string | null) => subs.find((s) => s.id === id)?.name ?? "";
 
   // Otherwise: whatever this store is usually filed under.
-  ensureSharedCategories(householdId);
-  const store = storeName
-    ? db
+  const [store] = storeName
+    ? await db
         .select()
         .from(labels)
         .where(and(eq(labels.householdId, householdId), eq(labels.kind, "store"), eq(labels.key, nameKey(storeName))))
-        .get()
-    : undefined;
-  const usual = (owner: string | null) => {
+        .limit(1)
+    : [];
+  const usual = async (owner: string | null) => {
     if (!store) return null;
-    return (
-      db
-        .select({ categoryId: expenses.categoryId, n: count() })
-        .from(expenses)
-        .where(
-          and(
-            eq(expenses.storeId, store.id),
-            owner ? eq(expenses.ownerUserId, owner) : isNull(expenses.ownerUserId),
-          ),
-        )
-        .groupBy(expenses.categoryId)
-        .orderBy(desc(count()))
-        .get()?.categoryId ?? null
-    );
+    const [row] = await db
+      .select({ categoryId: expenses.categoryId, n: count() })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.householdId, householdId),
+          eq(expenses.storeId, store.id),
+          owner ? eq(expenses.ownerUserId, owner) : isNull(expenses.ownerUserId),
+        ),
+      )
+      .groupBy(expenses.categoryId)
+      .orderBy(desc(count()))
+      .limit(1);
+    return row?.categoryId ?? null;
   };
+  const [sharedUsual, personalUsual] = await Promise.all([usual(null), usual(userId)]);
   const sharedDefault =
-    usual(null) ??
-    cats.find((c) => c.scope === "shared" && c.key === nameKey(FOOD_CATEGORY))?.id ??
-    null;
-  const personalDefault = catName(usual(userId));
-
-  fs.mkdirSync(tmpDir(), { recursive: true });
-  clearOldTemp();
-  const token = crypto.randomUUID();
-  fs.writeFileSync(path.join(tmpDir(), `${token}.jpg`), read.image);
+    sharedUsual ?? cats.find((c) => c.scope === "shared" && c.key === nameKey(FOOD_CATEGORY))?.id ?? null;
+  const personalDefault = catName(personalUsual);
 
   return {
-    token,
-    image: { src: `data:image/jpeg;base64,${read.image.toString("base64")}`, width: read.width, height: read.height },
     store: {
       value: storeName,
       sure: parsed.store.sure,
@@ -135,20 +134,17 @@ export async function scanReceipt(householdId: string, userId: string, photo: Bu
   };
 }
 
-/** Moves a reviewed photo to its permanent home. Returns whether there was one. */
-export function keepReceiptImage(token: string | null, receiptId: string) {
-  if (!token || !TOKEN.test(token)) return false;
-  const from = path.join(tmpDir(), `${token}.jpg`);
-  if (!fs.existsSync(from)) return false;
-  fs.renameSync(from, path.join(receiptsDir(), `${receiptId}.jpg`));
-  return true;
-}
+const MAX_IMAGE_BYTES = 750 * 1024;
 
-export function removeReceiptImage(receiptId: string) {
-  fs.rmSync(path.join(receiptsDir(), `${receiptId}.jpg`), { force: true });
+/**
+ * Decodes the receipt photo the phone sent: it must be a JPEG of a sensible
+ * size. Returns the bytes, or null if it isn't one.
+ */
+export function decodeReceiptImage(base64: unknown): Uint8Array | null {
+  if (typeof base64 !== "string" || !base64 || base64.length > Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 4) return null;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return null;
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  // JPEG files start FF D8 FF.
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return null;
+  return bytes;
 }
-
-export function receiptImagePath(receiptId: string) {
-  return path.join(receiptsDir(), `${receiptId}.jpg`);
-}
-

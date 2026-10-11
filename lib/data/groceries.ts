@@ -9,18 +9,55 @@ import { nameKey } from "@/lib/lists";
 import { ensureSharedCategories, getGroceryItemOptions } from "./lists";
 
 export async function getGroceryMonth(householdId: string, month: string) {
-  const preps = db
-    .select()
-    .from(mealPreps)
-    .where(and(eq(mealPreps.householdId, householdId), eq(mealPreps.month, month)))
-    .orderBy(asc(mealPreps.createdAt))
-    .all();
+  // The shared Food & Toiletries budget this list is spending from.
+  await ensureSharedCategories(householdId);
 
-  const lines = await db.query.groceryListItems.findMany({
-    where: and(eq(groceryListItems.householdId, householdId), eq(groceryListItems.month, month)),
-    orderBy: [asc(groceryListItems.createdAt)],
-    with: { item: true },
-  });
+  const [preps, lines, pastPreps, food, previous, itemOptions] = await Promise.all([
+    db
+      .select()
+      .from(mealPreps)
+      .where(and(eq(mealPreps.householdId, householdId), eq(mealPreps.month, month)))
+      .orderBy(asc(mealPreps.createdAt)),
+    db.query.groceryListItems.findMany({
+      where: and(eq(groceryListItems.householdId, householdId), eq(groceryListItems.month, month)),
+      orderBy: [asc(groceryListItems.createdAt)],
+      with: { item: true },
+    }),
+    // Past meal preps you can plan again. The newest version of each is the
+    // one that gets copied.
+    db
+      .select({ name: mealPreps.name, key: mealPreps.key })
+      .from(mealPreps)
+      .where(eq(mealPreps.householdId, householdId))
+      .orderBy(desc(mealPreps.createdAt)),
+    db
+      .select()
+      .from(categories)
+      .where(
+        and(
+          eq(categories.householdId, householdId),
+          eq(categories.scope, "shared"),
+          eq(categories.key, nameKey(FOOD_CATEGORY)),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]),
+    // The most recent earlier month with a general list, for "start from last month".
+    db
+      .select({ month: groceryListItems.month })
+      .from(groceryListItems)
+      .where(
+        and(
+          eq(groceryListItems.householdId, householdId),
+          isNull(groceryListItems.mealPrepId),
+          lt(groceryListItems.month, month),
+        ),
+      )
+      .orderBy(desc(groceryListItems.month))
+      .limit(1)
+      .then((rows) => rows[0]),
+    getGroceryItemOptions(householdId),
+  ]);
 
   const toLine = (l: (typeof lines)[number]) => ({
     id: l.id,
@@ -53,79 +90,40 @@ export async function getGroceryMonth(householdId: string, month: string) {
       };
     });
 
-  // Past meal preps you can plan again. The newest version of each is the one
-  // that gets copied.
-  const pastPreps = db
-    .select({ name: mealPreps.name, key: mealPreps.key })
-    .from(mealPreps)
-    .where(eq(mealPreps.householdId, householdId))
-    .orderBy(desc(mealPreps.createdAt))
-    .all();
   const mealPrepOptions = [...new Map(pastPreps.map((p) => [p.key, p.name])).values()].sort((a, b) =>
     a.localeCompare(b),
   );
 
-  // The shared Food & Toiletries budget this list is spending from.
-  ensureSharedCategories(householdId);
-  const food = db
-    .select()
-    .from(categories)
-    .where(
-      and(
-        eq(categories.householdId, householdId),
-        eq(categories.scope, "shared"),
-        eq(categories.key, nameKey(FOOD_CATEGORY)),
-      ),
-    )
-    .get();
-  const foodPlanned = food
-    ? (db
-        .select({ amount: budgetLines.amount })
-        .from(budgetLines)
-        .where(
-          and(
-            eq(budgetLines.categoryId, food.id),
-            eq(budgetLines.month, month),
-            isNull(budgetLines.ownerUserId),
-          ),
-        )
-        .get()?.amount ?? 0)
-    : 0;
-  const foodSpent = food
-    ? db
-        .select({ amount: expenses.amount })
-        .from(expenses)
-        .where(
-          and(
-            eq(expenses.categoryId, food.id),
-            isNull(expenses.ownerUserId),
-            like(expenses.date, monthPattern(month)),
-          ),
-        )
-        .all()
-        .reduce((sum, e) => sum + e.amount, 0)
-    : 0;
-
-  // The most recent earlier month with a general list, for "start from last month".
-  const previous = db
-    .select({ month: groceryListItems.month })
-    .from(groceryListItems)
-    .where(
-      and(
-        eq(groceryListItems.householdId, householdId),
-        isNull(groceryListItems.mealPrepId),
-        lt(groceryListItems.month, month),
-      ),
-    )
-    .orderBy(desc(groceryListItems.month))
-    .get();
+  const [foodPlanned, foodSpent] = food
+    ? await Promise.all([
+        db
+          .select({ amount: budgetLines.amount })
+          .from(budgetLines)
+          .where(
+            and(eq(budgetLines.categoryId, food.id), eq(budgetLines.month, month), isNull(budgetLines.ownerUserId)),
+          )
+          .limit(1)
+          .then((rows) => rows[0]?.amount ?? 0),
+        db
+          .select({ amount: expenses.amount })
+          .from(expenses)
+          .where(
+            and(
+              eq(expenses.categoryId, food.id),
+              isNull(expenses.ownerUserId),
+              like(expenses.date, monthPattern(month)),
+            ),
+          )
+          .then((rows) => rows.reduce((sum, e) => sum + e.amount, 0)),
+      ])
+    : [0, 0];
 
   return {
     general,
     generalTotals: groceryTotals(general),
     mealPreps: mealPrepSections,
     totals: groceryTotals(lines.map(toLine)),
-    itemOptions: getGroceryItemOptions(householdId),
+    itemOptions,
     mealPrepOptions,
     food: { planned: foodPlanned, spent: foodSpent },
     previousMonth: previous?.month ?? null,

@@ -30,11 +30,13 @@ export default async function BudgetPage({ searchParams }: { searchParams: Promi
   const thisMonth = currentMonth();
   const filters = { cat: params.cat, sub: params.sub, store: params.store, who: params.who };
 
-  const [spending, members] = await Promise.all([
+  const [spending, members, contributions, subcategoryOptions, storeOptions] = await Promise.all([
     getSpending({ householdId: household.id, ownerUserId: null, month, filters }),
     getHouseholdMembers(household.id),
+    getContributionsForMonth(household.id, month),
+    getSubcategoryOptions(household.id, "shared"),
+    getLabelOptions(household.id, "store"),
   ]);
-  const contributions = getContributionsForMonth(household.id, month);
   const paidIn = contributions.reduce((sum, c) => sum + c.amount, 0);
 
   const { totalPlanned, totalSpent, remaining } = spending;
@@ -121,8 +123,8 @@ export default async function BudgetPage({ searchParams }: { searchParams: Promi
             scope="shared"
             month={month}
             categories={spending.categories.map(({ id, name, color }) => ({ id, name, color }))}
-            subcategories={getSubcategoryOptions(household.id, "shared")}
-            stores={getLabelOptions(household.id, "store")}
+            subcategories={subcategoryOptions}
+            stores={storeOptions}
           />
         </Card>
         <Card>

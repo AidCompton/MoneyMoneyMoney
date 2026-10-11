@@ -22,13 +22,15 @@ export default async function QuickAddPage({ searchParams }: { searchParams: Pro
   const { user, household } = await requireSession();
   const scope = (await searchParams).for === "personal" ? "personal" : "shared";
   const month = currentMonth();
-  const shared = getCategoryOptions(household.id, "shared");
-  const personal = getCategoryOptions(household.id, "personal");
-  const stores = getLabelOptions(household.id, "store");
-  const subcategories = {
-    shared: getSubcategoryOptions(household.id, "shared"),
-    personal: getSubcategoryOptions(household.id, "personal"),
-  };
+  const [shared, personal, stores, sharedSubs, personalSubs, groceries] = await Promise.all([
+    getCategoryOptions(household.id, "shared"),
+    getCategoryOptions(household.id, "personal"),
+    getLabelOptions(household.id, "store"),
+    getSubcategoryOptions(household.id, "shared"),
+    getSubcategoryOptions(household.id, "personal"),
+    getGroceryItemOptions(household.id),
+  ]);
+  const subcategories = { shared: sharedSubs, personal: personalSubs };
 
   const tab = (value: "shared" | "personal", label: string) => (
     <Link
@@ -61,7 +63,7 @@ export default async function QuickAddPage({ searchParams }: { searchParams: Pro
           personalCategories={personal}
           subcategories={subcategories}
           stores={stores}
-          groceryNames={getGroceryItemOptions(household.id).map((g) => g.name)}
+          groceryNames={groceries.map((g) => g.name)}
         />
       </Card>
 

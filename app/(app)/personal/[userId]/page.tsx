@@ -52,8 +52,15 @@ export default async function PersonalBudgetPage({
   const filters = { cat: search.cat, sub: search.sub, store: search.store };
   const basePath = `/personal/${person.id}`;
 
-  const { spending, flow, incomes, contributions } = await getPersonalMonth(household.id, person.id, month, filters);
-  const savingsBalance = totalSavingsBalance(person.id);
+  const [{ spending, flow, incomes, contributions }, savingsBalance, sourceOptions, personalCategories, personalSubs, storeOptions] =
+    await Promise.all([
+      getPersonalMonth(household.id, person.id, month, filters),
+      totalSavingsBalance(person.id),
+      getLabelOptions(household.id, "income_source"),
+      getCategoryOptions(household.id, "personal"),
+      getSubcategoryOptions(household.id, "personal"),
+      getLabelOptions(household.id, "store"),
+    ]);
   const monthName = formatMonth(month).split(" ")[0];
   const overspent = flow.left < 0;
   const hasPlan = spending.totalPlanned > 0;
@@ -134,7 +141,7 @@ export default async function PersonalBudgetPage({
           />
           {isOwner && (
             <div className="mt-6 border-t border-white/[0.07] pt-6">
-              <IncomeForm key={month} month={month} sources={getLabelOptions(household.id, "income_source")} />
+              <IncomeForm key={month} month={month} sources={sourceOptions} />
             </div>
           )}
         </Card>
@@ -222,9 +229,9 @@ export default async function PersonalBudgetPage({
               key={month}
               scope="personal"
               month={month}
-              categories={getCategoryOptions(household.id, "personal")}
-              subcategories={getSubcategoryOptions(household.id, "personal")}
-              stores={getLabelOptions(household.id, "store")}
+              categories={personalCategories}
+              subcategories={personalSubs}
+              stores={storeOptions}
             />
           </Card>
           <Card>
@@ -236,7 +243,7 @@ export default async function PersonalBudgetPage({
               categories={spending.planCategories}
               planned={spending.planned}
               previousPlanned={spending.previousPlanned}
-              categoryOptions={getCategoryOptions(household.id, "personal")}
+              categoryOptions={personalCategories}
             />
           </Card>
         </div>

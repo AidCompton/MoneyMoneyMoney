@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { savingsAccounts, savingsTransactions } from "@/db/schema";
 import { requireSession } from "@/lib/auth";
 import { todayISO } from "@/lib/dates";
-import { isISODate, money, optionalStr, str } from "@/lib/form";
+import { isISODate, isId, money, optionalStr, str } from "@/lib/form";
 import { findOrCreateLabel } from "@/lib/data/lists";
 
 export type ActionState = { error?: string; saved?: boolean };
@@ -32,7 +32,7 @@ export async function createSavingsAccount(_prev: ActionState, fd: FormData): Pr
   if (!isISODate(openingDate)) return { error: "Pick the date of that balance." };
   const joint = str(fd, "scope") === "joint";
 
-  const account = db
+  const [account] = await db
     .insert(savingsAccounts)
     .values({
       householdId: household.id,
@@ -41,8 +41,7 @@ export async function createSavingsAccount(_prev: ActionState, fd: FormData): Pr
       openingBalance: opening,
       openingDate,
     })
-    .returning()
-    .get();
+    .returning();
 
   revalidatePath("/", "layout");
   redirect(`/personal/${user.id}/savings/${account.id}`);
@@ -51,9 +50,10 @@ export async function createSavingsAccount(_prev: ActionState, fd: FormData): Pr
 /** A personal account you own, or a joint account shared by your household. */
 async function ownAccount(accountId: string) {
   const { user, household } = await requireSession();
-  const account = db.select().from(savingsAccounts).where(eq(savingsAccounts.id, accountId)).get();
-  if (!account) return null;
-  const allowed = account.ownerUserId ? account.ownerUserId === user.id : account.householdId === household.id;
+  if (!isId(accountId)) return null;
+  const [account] = await db.select().from(savingsAccounts).where(eq(savingsAccounts.id, accountId)).limit(1);
+  if (!account || account.householdId !== household.id) return null;
+  const allowed = account.ownerUserId ? account.ownerUserId === user.id : true;
   return allowed ? { account, user } : null;
 }
 
@@ -63,7 +63,7 @@ export async function updateSavingsAccount(_prev: ActionState, fd: FormData): Pr
   const fields = readAccount(fd);
   if ("error" in fields) return { error: fields.error };
 
-  db.update(savingsAccounts).set(fields).where(eq(savingsAccounts.id, owned.account.id)).run();
+  await db.update(savingsAccounts).set(fields).where(eq(savingsAccounts.id, owned.account.id));
   revalidatePath("/", "layout");
   return { saved: true };
 }
@@ -72,7 +72,7 @@ export async function deleteSavingsAccount(accountId: string) {
   const owned = await ownAccount(accountId);
   if (!owned) return;
   // Its deposits and withdrawals go with it (ON DELETE CASCADE).
-  db.delete(savingsAccounts).where(eq(savingsAccounts.id, accountId)).run();
+  await db.delete(savingsAccounts).where(eq(savingsAccounts.id, owned.account.id));
   revalidatePath("/", "layout");
   redirect(`/personal/${owned.user.id}/savings`);
 }
@@ -87,33 +87,34 @@ export async function addSavingsTransaction(_prev: ActionState, fd: FormData): P
   if (!isISODate(date)) return { error: "Pick a date." };
   const withdrawal = str(fd, "direction") === "out";
 
-  db.transaction((tx) => {
-    const tag = findOrCreateLabel(owned.account.householdId, "savings_tag", str(fd, "tag"), tx);
-    tx.insert(savingsTransactions)
-      .values({
-        accountId: owned.account.id,
-        userId: owned.user.id,
-        tagId: tag?.id ?? null,
-        amount: withdrawal ? -amount : amount,
-        date,
-        note: optionalStr(fd, "note"),
-      })
-      .run();
+  await db.transaction(async (tx) => {
+    const tag = await findOrCreateLabel(owned.account.householdId, "savings_tag", str(fd, "tag"), tx);
+    await tx.insert(savingsTransactions).values({
+      accountId: owned.account.id,
+      userId: owned.user.id,
+      tagId: tag?.id ?? null,
+      amount: withdrawal ? -amount : amount,
+      date,
+      note: optionalStr(fd, "note"),
+    });
   });
 
   revalidatePath("/", "layout");
   return { saved: true };
 }
 
+/** Removes a deposit or withdrawal from your own account or a joint one. */
 export async function deleteSavingsTransaction(transactionId: string) {
-  const { user } = await requireSession();
-  const row = db
-    .select({ id: savingsTransactions.id, owner: savingsAccounts.ownerUserId })
+  const { user, household } = await requireSession();
+  if (!isId(transactionId)) return;
+  const [row] = await db
+    .select({ id: savingsTransactions.id, owner: savingsAccounts.ownerUserId, householdId: savingsAccounts.householdId })
     .from(savingsTransactions)
     .innerJoin(savingsAccounts, eq(savingsAccounts.id, savingsTransactions.accountId))
     .where(eq(savingsTransactions.id, transactionId))
-    .get();
-  if (!row || row.owner !== user.id) return;
-  db.delete(savingsTransactions).where(eq(savingsTransactions.id, transactionId)).run();
+    .limit(1);
+  if (!row || row.householdId !== household.id) return;
+  if (row.owner && row.owner !== user.id) return;
+  await db.delete(savingsTransactions).where(eq(savingsTransactions.id, transactionId));
   revalidatePath("/", "layout");
 }

@@ -12,7 +12,7 @@ test("scan a receipt from quick add", async ({ page }) => {
   await page.getByLabel("Household name").fill("The Receipt Test");
   await page.getByLabel("Your name").fill("Aid");
   await page.getByLabel("Email").fill(`receipts-${stamp}@example.com`);
-  await page.getByLabel("Password").fill("password123");
+  await page.getByLabel("Password").fill("Tidy-Ledger-2026");
   await page.getByRole("button", { name: "Create household" }).click();
   await expect(page).toHaveURL(/\/dashboard/);
 

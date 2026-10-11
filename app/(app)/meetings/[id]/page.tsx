@@ -31,7 +31,7 @@ export default async function MeetingDetailPage({
 }) {
   const { id } = await params;
   const { household } = await requireSession();
-  const result = await getMeetingWithItems(id);
+  const result = await getMeetingWithItems(id, household.id);
 
   if (!result || result.meeting.householdId !== household.id) {
     notFound();

@@ -23,9 +23,14 @@ export default async function SavingsAccountPage({
 }) {
   const { userId, accountId } = await params;
   const { user, household } = await requireSession();
-  const person = (await getHouseholdMembers(household.id)).find((m) => m.id === userId);
-  const result = await getSavingsAccount(accountId, currentMonth());
-  const validOwner = result && (result.account.ownerUserId ? result.account.ownerUserId === person?.id : result.account.householdId === household.id);
+  const [members, result, tagOptions] = await Promise.all([
+    getHouseholdMembers(household.id),
+    getSavingsAccount(accountId, household.id, currentMonth()),
+    getLabelOptions(household.id, "savings_tag"),
+  ]);
+  const person = members.find((m) => m.id === userId);
+  // A personal account shows on its owner's page; a joint one on either of yours.
+  const validOwner = result && (result.account.ownerUserId ? result.account.ownerUserId === person?.id : true);
   if (!person || !result || !validOwner) notFound();
 
   const { account, summary, transactions } = result;
@@ -101,7 +106,7 @@ export default async function SavingsAccountPage({
         {isOwner && (
           <Card className="lg:col-span-2">
             <SectionTitle>Deposit or withdraw</SectionTitle>
-            <TransactionForm accounts={[{ id: account.id, name: account.name }]} tags={getLabelOptions(household.id, "savings_tag")} />
+            <TransactionForm accounts={[{ id: account.id, name: account.name }]} tags={tagOptions} />
           </Card>
         )}
         <Card className={isOwner ? "lg:col-span-3" : "lg:col-span-5"}>

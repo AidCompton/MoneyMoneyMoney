@@ -4,35 +4,35 @@
   "private": true,
   "scripts": {
     "postinstall": "node scripts/ensure-env.mjs",
-    "predev": "node scripts/check-deps.mjs",
+    "predev": "node scripts/check-deps.mjs && node scripts/copy-ocr-assets.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/check-deps.mjs",
+    "prebuild": "node scripts/check-deps.mjs && node scripts/copy-ocr-assets.mjs",
     "build": "next build",
     "prestart": "node scripts/check-deps.mjs",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "mkdir -p data && drizzle-kit migrate",
-    "db:backup": "node scripts/backup-db.mjs",
+    "db:migrate": "node scripts/migrate.mjs",
     "test": "vitest run",
-    "test:e2e": "rm -rf data-e2e && playwright test"
+    "test:e2e": "playwright test",
+    "db:local": "node scripts/local-postgres.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "@opennextjs/cloudflare": "^1.20.10",
     "@tesseract.js-data/eng": "^1.0.0",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.3",
     "gsap": "^3.15.0",
     "iron-session": "^9.0.1",
     "nanoid": "^6.0.1",
-    "next": "16.3.6",
+    "next": "^16.3.8",
+    "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",
-    "sharp": "^0.35.4",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
@@ -45,12 +45,23 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.1",
+    "autocannon": "^8.0.0",
     "drizzle-kit": "^0.31.11",
+    "embedded-postgres": "^17.10.0-beta.17",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
+    "eslint-config-next": "^16.3.8",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "wrangler": "^4.149.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "overrides": {
+    "@node-minify/core": {
+      "glob": "^10.5.0"
+    }
   }
 }

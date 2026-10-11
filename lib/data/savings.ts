@@ -1,8 +1,9 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import { db } from "@/db";
 import { savingsAccounts, savingsTransactions } from "@/db/schema";
 import { goalProgressPercent } from "@/lib/calculations";
+import { monthPattern } from "@/lib/dates";
 import { crossFilter, type Dimension } from "@/lib/facets";
 
 export type SavingsFilters = { account?: string; tag?: string; dir?: string };
@@ -51,7 +52,7 @@ function summarise(account: Account, txs: Tx[], month: string) {
 
 /** A person's own accounts, plus their household's joint accounts. */
 export async function getSavingsAccounts(householdId: string, ownerUserId: string, month: string) {
-  const accounts = db
+  const accounts = await db
     .select()
     .from(savingsAccounts)
     .where(
@@ -61,12 +62,9 @@ export async function getSavingsAccounts(householdId: string, ownerUserId: strin
         eq(savingsAccounts.archived, false),
       ),
     )
-    .orderBy(asc(savingsAccounts.createdAt))
-    .all();
+    .orderBy(asc(savingsAccounts.createdAt));
   const ids = accounts.map((a) => a.id);
-  const txs = ids.length
-    ? db.select().from(savingsTransactions).where(inArray(savingsTransactions.accountId, ids)).all()
-    : [];
+  const txs = ids.length ? await db.select().from(savingsTransactions).where(inArray(savingsTransactions.accountId, ids)) : [];
   return accounts.map((a) =>
     summarise(
       a,
@@ -85,7 +83,7 @@ export async function getSavingsActivity(
   month: string,
   filters: SavingsFilters = {},
 ) {
-  const accounts = db
+  const accounts = await db
     .select({ id: savingsAccounts.id })
     .from(savingsAccounts)
     .where(
@@ -93,15 +91,14 @@ export async function getSavingsActivity(
         eq(savingsAccounts.householdId, householdId),
         or(eq(savingsAccounts.ownerUserId, ownerUserId), isNull(savingsAccounts.ownerUserId)),
       ),
-    )
-    .all();
+    );
   const ids = accounts.map((a) => a.id);
   const rows = ids.length
     ? (
         await db.query.savingsTransactions.findMany({
           where: inArray(savingsTransactions.accountId, ids),
           orderBy: [desc(savingsTransactions.date), desc(savingsTransactions.createdAt)],
-          with: { account: true, tag: true, user: true },
+          with: { account: true, tag: true, user: { columns: { id: true, name: true } } },
         })
       ).filter((t) => t.date.startsWith(`${month}-`))
     : [];
@@ -135,13 +132,18 @@ export async function getSavingsActivity(
   };
 }
 
-export async function getSavingsAccount(accountId: string, month: string) {
-  const account = db.select().from(savingsAccounts).where(eq(savingsAccounts.id, accountId)).get();
+/** A savings account and its history, or null if it isn't this household's. */
+export async function getSavingsAccount(accountId: string, householdId: string, month: string) {
+  const [account] = await db
+    .select()
+    .from(savingsAccounts)
+    .where(and(eq(savingsAccounts.id, accountId), eq(savingsAccounts.householdId, householdId)))
+    .limit(1);
   if (!account) return null;
   const transactions = await db.query.savingsTransactions.findMany({
     where: eq(savingsTransactions.accountId, accountId),
     orderBy: [desc(savingsTransactions.date), desc(savingsTransactions.createdAt)],
-    with: { tag: true, user: true },
+    with: { tag: true, user: { columns: { id: true, name: true } } },
   });
   return {
     account,
@@ -151,25 +153,23 @@ export async function getSavingsAccount(accountId: string, month: string) {
 }
 
 /** Net deposits into someone's accounts during a month (withdrawals count against). */
-export function savedInMonth(ownerUserId: string, month: string) {
-  const rows = db
-    .select({ amount: savingsTransactions.amount, date: savingsTransactions.date })
+export async function savedInMonth(ownerUserId: string, month: string) {
+  const rows = await db
+    .select({ amount: savingsTransactions.amount })
     .from(savingsTransactions)
     .innerJoin(savingsAccounts, eq(savingsAccounts.id, savingsTransactions.accountId))
-    .where(eq(savingsAccounts.ownerUserId, ownerUserId))
-    .all();
-  return rows.filter((r) => r.date.startsWith(`${month}-`)).reduce((sum, r) => sum + r.amount, 0);
+    .where(and(eq(savingsAccounts.ownerUserId, ownerUserId), like(savingsTransactions.date, monthPattern(month))));
+  return rows.reduce((sum, r) => sum + r.amount, 0);
 }
 
 /** Current total across someone's active accounts. */
-export function totalSavingsBalance(ownerUserId: string) {
-  const accounts = db
+export async function totalSavingsBalance(ownerUserId: string) {
+  const accounts = await db
     .select()
     .from(savingsAccounts)
-    .where(and(eq(savingsAccounts.ownerUserId, ownerUserId), eq(savingsAccounts.archived, false)))
-    .all();
+    .where(and(eq(savingsAccounts.ownerUserId, ownerUserId), eq(savingsAccounts.archived, false)));
   if (!accounts.length) return 0;
-  const txs = db
+  const txs = await db
     .select({ amount: savingsTransactions.amount })
     .from(savingsTransactions)
     .where(
@@ -177,20 +177,18 @@ export function totalSavingsBalance(ownerUserId: string) {
         savingsTransactions.accountId,
         accounts.map((a) => a.id),
       ),
-    )
-    .all();
+    );
   return accounts.reduce((sum, a) => sum + a.openingBalance, 0) + txs.reduce((sum, t) => sum + t.amount, 0);
 }
 
 /** Current total across the household's joint accounts (counted once, not per member). */
-export function totalJointSavingsBalance(householdId: string) {
-  const accounts = db
+export async function totalJointSavingsBalance(householdId: string) {
+  const accounts = await db
     .select()
     .from(savingsAccounts)
-    .where(and(eq(savingsAccounts.householdId, householdId), isNull(savingsAccounts.ownerUserId), eq(savingsAccounts.archived, false)))
-    .all();
+    .where(and(eq(savingsAccounts.householdId, householdId), isNull(savingsAccounts.ownerUserId), eq(savingsAccounts.archived, false)));
   if (!accounts.length) return 0;
-  const txs = db
+  const txs = await db
     .select({ amount: savingsTransactions.amount })
     .from(savingsTransactions)
     .where(
@@ -198,7 +196,6 @@ export function totalJointSavingsBalance(householdId: string) {
         savingsTransactions.accountId,
         accounts.map((a) => a.id),
       ),
-    )
-    .all();
+    );
   return accounts.reduce((sum, a) => sum + a.openingBalance, 0) + txs.reduce((sum, t) => sum + t.amount, 0);
 }

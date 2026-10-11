@@ -12,7 +12,7 @@ test("a partner joins with the join link, even without JavaScript", async ({ pag
   await page.getByLabel("Household name").fill("The Join Test");
   await page.getByLabel("Your name").fill("Aid");
   await page.getByLabel("Email").fill(`join-owner-${stamp}@example.com`);
-  await page.getByLabel("Password").fill("password123");
+  await page.getByLabel("Password").fill("Tidy-Ledger-2026");
   await page.getByRole("button", { name: "Create household" }).click();
   await expect(page).toHaveURL(/\/dashboard/);
 
@@ -34,7 +34,7 @@ test("a partner joins with the join link, even without JavaScript", async ({ pag
   await partner.getByLabel("Join code").fill("ZZZZZZ");
   await partner.getByLabel("Your name").fill("Sam");
   await partner.getByLabel("Email").fill(`join-partner-${stamp}@example.com`);
-  await partner.getByLabel("Password").fill("password123");
+  await partner.getByLabel("Password").fill("Tidy-Ledger-2026");
   await partner.getByRole("button", { name: "Join household" }).click();
   await expect(partner.getByRole("alert")).toHaveText(/couldn.t find a household with that code/);
 
@@ -43,7 +43,7 @@ test("a partner joins with the join link, even without JavaScript", async ({ pag
   await expect(partner.getByLabel("Join code")).toHaveValue(code);
   await partner.getByLabel("Your name").fill("Sam");
   await partner.getByLabel("Email").fill(`join-partner-${stamp}@example.com`);
-  await partner.getByLabel("Password").fill("password123");
+  await partner.getByLabel("Password").fill("Tidy-Ledger-2026");
   await partner.getByRole("button", { name: "Join household" }).click();
   await expect(partner).toHaveURL(/\/dashboard/);
 

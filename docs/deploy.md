@@ -4,6 +4,9 @@ The app runs on Cloudflare Workers, and the data lives in a Supabase Postgres
 database. Cloudflare reaches the database through Hyperdrive. You both sign
 in with the app's own accounts, as before, and receipts are read on the phone.
 
+Prefer Netlify? See [deploy-netlify.md](deploy-netlify.md). It doesn't need a
+paid plan, but pages will likely be a little slower from South Africa.
+
 This is a one-time setup. Most steps happen in the Supabase and Cloudflare
 dashboards or on your own computer, and each one says which.
 

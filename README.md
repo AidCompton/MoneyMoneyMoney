@@ -8,11 +8,12 @@ A household money companion for the two of you. It has:
 - a grocery and meal-prep planner;
 - a weekly Money Meeting agenda.
 
-It runs online, on Cloudflare Workers with a Supabase (Postgres) database, so
-it works from your phones anywhere. You each sign in with the app's own
+It runs online, on Cloudflare Workers or Netlify, with a Supabase (Postgres)
+database, so it works from your phones anywhere. You each sign in with the app's own
 accounts, and receipts are read on the phone itself.
 
 - **Putting it online, step by step:** [docs/deploy.md](docs/deploy.md)
+  (Cloudflare), or [docs/deploy-netlify.md](docs/deploy-netlify.md) (Netlify)
 - **How it was secured and attacked:** [docs/security-audit.md](docs/security-audit.md)
 - **How it held up under load:** [docs/stress-test.md](docs/stress-test.md)
 
@@ -230,8 +231,8 @@ Postgres. The load test is described in
 
 ## Stack
 
-- Next.js (App Router) and TypeScript, deployed to Cloudflare Workers with
-  the OpenNext adapter.
+- Next.js (App Router) and TypeScript, deployed to Cloudflare Workers (the
+  OpenNext adapter) or Netlify (its Next.js runtime).
 - Postgres on Supabase, reached through Cloudflare Hyperdrive, with Drizzle
   ORM and postgres.js. Tables live in their own `app` schema, locked away
   from Supabase's public API.

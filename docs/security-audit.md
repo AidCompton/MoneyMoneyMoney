@@ -223,10 +223,13 @@ These are known and accepted for now, roughly in order of importance.
    Consider a usage notification in the Cloudflare dashboard.
 9. **Backups are yours to take.** Supabase's free plan doesn't back up
    automatically (see [deploy.md](deploy.md#backups)).
-10. **The per-address limits trust the `cf-connecting-ip` header,** which
-    Cloudflare sets. If the app were ever hosted behind something else, the
-    fallback (`x-forwarded-for`) can be faked. The per-email limit doesn't
-    depend on the address.
+10. **The per-address limits trust exactly one header, chosen by host:**
+    `cf-connecting-ip` on Cloudflare, `x-nf-client-connection-ip` on
+    Netlify (`lib/platform.ts`). Any other copy a visitor sends is ignored.
+    Tested on Netlify's local emulation: 31 sign-ins with 31 faked
+    addresses still counted as one address. Self-hosted, the fallback
+    (`x-forwarded-for`) could be faked. The per-email limit doesn't depend
+    on the address at all.
 11. **This audit ran against a local production build.** After deploying,
     check the live site's cookie and headers as described in
     [deploy.md](deploy.md#7-check-the-live-site). The attack suite edits the

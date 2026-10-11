@@ -16,11 +16,13 @@ const production = process.env.NODE_ENV === "production";
  * What pages may load. Everything comes from this site: no third-party
  * scripts, fonts, images or connections, and the app can't be put in a frame
  * on another site. (Next.js puts its page data in inline scripts, hence
- * 'unsafe-inline' for scripts; React escapes everything it renders.)
+ * 'unsafe-inline' for scripts; React escapes everything it renders. The
+ * receipt reader is WebAssembly, hence 'wasm-unsafe-eval', which allows
+ * compiling WebAssembly but still not JavaScript's eval.)
  */
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",

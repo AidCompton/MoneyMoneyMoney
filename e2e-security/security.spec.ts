@@ -553,3 +553,16 @@ test("17. the database is locked away from Supabase's API roles", async () => {
     }
   }
 });
+
+test("18. receipts can still be read on the phone under these protections", async () => {
+  // The receipt reader compiles WebAssembly in a worker; a policy without
+  // 'wasm-unsafe-eval' silently breaks it.
+  const errors: string[] = [];
+  pageA.on("console", (m) => {
+    if (m.type() === "error") errors.push(m.text());
+  });
+  await pageA.goto("/add");
+  await pageA.getByLabel("Choose a receipt photo").setInputFiles("e2e/fixtures/receipt.jpg");
+  await expect(pageA.getByText("Everything checks out")).toBeVisible({ timeout: 90_000 });
+  expect(errors.filter((e) => /Content Security Policy|WebAssembly/i.test(e))).toEqual([]);
+});

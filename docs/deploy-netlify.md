@@ -115,7 +115,7 @@ Exactly as in [deploy.md, step 5](deploy.md#5-bring-your-data-across).
 
 | Variable | Value |
 | --- | --- |
-| `DATABASE_URL` | Supabase's **Transaction pooler** string (port **6543**), with the app's login from step 3b: `postgresql://moneymoney_app.<project-ref>:<password>@<pooler host>:6543/postgres`. Copy the pooler host from Supabase's **Connect** panel. Serverless functions should use this one. The app turns off prepared statements for it automatically, and connects over TLS. |
+| `DATABASE_URL` | Supabase's **Transaction pooler** string (port **6543**), with the app's login from step 3b: `postgresql://moneymoney_app.<project-ref>:<password>@<pooler host>:6543/postgres`. Copy the pooler host from Supabase: **Connect → Direct**, then switch the connection method to **Transaction pooler**. Don't guess it: the `aws-N` number is a pooler cluster that can't be worked out from the region, and a wrong one fails silently ("Tenant or user not found"). Serverless functions should use this one. The app turns off prepared statements for it automatically, and connects over TLS. |
 | `SESSION_SECRET` | A new random secret. Mark it **secret** if Netlify offers the option. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. |
 
 4. Deploy.

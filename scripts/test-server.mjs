@@ -20,9 +20,11 @@ const prod = args.includes("--prod");
 const port = args.includes("--port") ? args[args.indexOf("--port") + 1] : "3100";
 const pgPort = Number(process.env.TEST_PG_PORT ?? 5434);
 
-rmSync(".postgres-e2e", { recursive: true, force: true });
+// One folder per port, so a test server never wipes another's database.
+const dataDir = `.postgres-e2e/${pgPort}`;
+rmSync(dataDir, { recursive: true, force: true });
 const pg = await startLocalPostgres({
-  dir: ".postgres-e2e",
+  dir: dataDir,
   port: pgPort,
   persistent: false,
   databases: ["moneymoneymoney_test"],
@@ -31,6 +33,17 @@ const pg = await startLocalPostgres({
 const url = pg.url("moneymoneymoney_test");
 
 const sql = postgres(url, { max: 1, onnotice: () => {} });
+if (process.env.SECURITY_AUDIT) {
+  // Supabase's API roles, so the audit can check the lockdown migration. As a
+  // worst case, they're given access to every new schema and table by
+  // default; the migration must take all of it away again.
+  for (const role of ["anon", "authenticated", "service_role"]) {
+    await sql.unsafe(`do $$ begin create role ${role} nologin; exception when duplicate_object then null; end $$`);
+    await sql.unsafe(`alter default privileges grant all on tables to ${role}`);
+    await sql.unsafe(`alter default privileges grant all on sequences to ${role}`);
+    await sql.unsafe(`alter default privileges grant usage on schemas to ${role}`);
+  }
+}
 await migrate(drizzle(sql), { migrationsFolder: "db/migrations" });
 await sql.end();
 console.log(`[test-server] database ready: ${url}`);
@@ -40,8 +53,9 @@ const next = spawn("npx", ["next", prod ? "start" : "dev", "-p", port, "-H", "12
   env: {
     ...process.env,
     DATABASE_URL: url,
-    // Tests create a fresh household each time.
-    ALLOW_NEW_HOUSEHOLDS: "true",
+    // The browser tests create a fresh household each time; the security
+    // audit (SECURITY_AUDIT=1) tests the real, closed sign-up instead.
+    ...(process.env.SECURITY_AUDIT ? {} : { ALLOW_NEW_HOUSEHOLDS: "true", SIGNUP_LIMIT_PER_HOUR: "200" }),
     ...(prod ? { INSECURE_COOKIES: process.env.INSECURE_COOKIES ?? "1" } : {}),
   },
 });

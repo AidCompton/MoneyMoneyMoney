@@ -94,8 +94,11 @@ export async function currentUser() {
 export const MIN_PASSWORD = 10;
 export const MAX_PASSWORD = 128;
 
-export function hashPassword(password: string) {
-  return bcrypt.hash(password, 10);
+// bcrypt's synchronous functions: the same ~90 ms of CPU as the async ones,
+// without depending on timers, which in some server runtimes stretched one
+// password check to well over a second.
+export async function hashPassword(password: string) {
+  return bcrypt.hashSync(password, 10);
 }
 
 // A hash of a random string, checked when the email isn't found so that a
@@ -104,7 +107,7 @@ const NO_SUCH_USER_HASH = "$2b$10$piYZGqG92SghP3GUqClOR.OHUppwS93n3Yiq0eNTs88t5S
 
 export async function verifyPassword(password: string, hash: string | null | undefined) {
   if (password.length > MAX_PASSWORD) return false;
-  const matches = await bcrypt.compare(password, hash ?? NO_SUCH_USER_HASH);
+  const matches = bcrypt.compareSync(password, hash ?? NO_SUCH_USER_HASH);
   return matches && !!hash;
 }
 

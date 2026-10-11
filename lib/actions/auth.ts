@@ -44,8 +44,14 @@ function readNewAccount(fd: FormData) {
 const isUniqueViolation = (error: unknown) =>
   typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
 
+/** Per-hour limits; adjustable for test servers, which sign up many households. */
+const perHour = (name: string, fallback: number) => {
+  const n = Number(process.env[name]);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+};
+
 async function signUpLimits(): Promise<Limit[]> {
-  return [{ key: `signup-ip:${await clientIp()}`, max: 10, windowMs: 60 * MINUTE }];
+  return [{ key: `signup-ip:${await clientIp()}`, max: perHour("SIGNUP_LIMIT_PER_HOUR", 10), windowMs: 60 * MINUTE }];
 }
 
 export async function createHousehold(_prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -87,7 +93,10 @@ export async function createHousehold(_prev: ActionState, fd: FormData): Promise
 
 export async function joinHousehold(_prev: ActionState, fd: FormData): Promise<ActionState> {
   // Each guess at a join code counts, so codes can't be found by trying many.
-  const limits = [...(await signUpLimits()), { key: `join-ip:${await clientIp()}`, max: 10, windowMs: 60 * MINUTE }];
+  const limits = [
+    ...(await signUpLimits()),
+    { key: `join-ip:${await clientIp()}`, max: perHour("JOIN_LIMIT_PER_HOUR", 10), windowMs: 60 * MINUTE },
+  ];
   if (await isLimited(limits)) return { error: TOO_MANY };
   await recordAttempt(limits);
 

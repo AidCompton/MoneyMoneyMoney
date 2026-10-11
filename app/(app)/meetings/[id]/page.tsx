@@ -242,7 +242,7 @@ export default async function MeetingDetailPage({
             </ul>
           )}
           <div className="border-t border-white/[0.07] pt-6">
-            <AddActionItemForm meetingId={meeting.id} members={members} />
+            <AddActionItemForm meetingId={meeting.id} members={members.map(({ id, name }) => ({ id, name }))} />
           </div>
         </Card>
       </div>

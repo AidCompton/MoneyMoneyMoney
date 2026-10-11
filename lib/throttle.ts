@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { authThrottle } from "@/db/schema";
+import { clientIpHeader } from "@/lib/platform";
 
 // Rate limiting for sign-in, joining and sign-up, kept in the database so it
 // holds across every server instance. Each key ("login-email:aid@x.com",
@@ -13,10 +14,14 @@ export type Limit = { key: string; max: number; windowMs: number };
 
 export const MINUTE = 60_000;
 
-/** The caller's IP address. Cloudflare sets CF-Connecting-IP and clients can't override it. */
+/**
+ * The caller's IP address, from the header the host sets (see
+ * lib/platform.ts). Self-hosted (and in tests) it's X-Forwarded-For.
+ */
 export async function clientIp() {
   const h = await headers();
-  return h.get("cf-connecting-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (clientIpHeader) return h.get(clientIpHeader)?.trim() || "unknown";
+  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 }
 
 /** True when any of these keys has used up its attempts. */

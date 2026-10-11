@@ -34,7 +34,7 @@ const fail = (message) => {
   console.error(`\n✗ ${message}\n`);
   process.exit(1);
 };
-if (!url) fail("Set DATABASE_URL to your Supabase connection string (see docs/deploy.md, step 5).");
+if (!url) fail("Set DATABASE_URL to your Supabase connection string (see docs/deploy.md, step 5, or docs/deploy-netlify.md, step 4).");
 if (!existsSync(dbPath)) fail(`Can't find ${dbPath}. Run this from the app folder, or pass --db path/to/app.db.`);
 
 let Database;

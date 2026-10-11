@@ -53,6 +53,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Which host this build is for, baked in at build time (lib/platform.ts).
+  // Netlify sets NETLIFY=true during its builds; netlify.toml also sets it.
+  env: {
+    HOSTED_ON: process.env.HOSTED_ON ?? (process.env.NETLIFY === "true" ? "netlify" : ""),
+  },
   allowedDevOrigins: [
     "127.0.0.1",
     ...ownAddresses,

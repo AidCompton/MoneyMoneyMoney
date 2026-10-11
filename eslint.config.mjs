@@ -25,6 +25,7 @@ const eslintConfig = defineConfig([
     // Generated or copied in, not ours:
     ".open-next/**",
     ".wrangler/**",
+    ".netlify/**",
     ".postgres/**",
     "public/ocr/**",
     "cloudflare-env.d.ts",

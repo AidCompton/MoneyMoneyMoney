@@ -1,0 +1,16 @@
+# Netlify settings. See docs/deploy-netlify.md for the one-time setup.
+# Server-side settings (DATABASE_URL, SESSION_SECRET) are NOT set here:
+# functions can't read this file at runtime, so they go in Netlify's
+# dashboard (Project configuration → Environment variables).
+
+[build]
+  # HOSTED_ON tells the app which header holds the visitor's address
+  # (lib/platform.ts).
+  command = "HOSTED_ON=netlify npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Security headers come from next.config.ts, which Netlify's Next.js runtime
+# applies to pages and static files alike.

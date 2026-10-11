@@ -1,6 +1,7 @@
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { onNetlify, onWorkers } from "@/lib/platform";
 import * as schema from "./schema";
 
 export type DB = PostgresJsDatabase<typeof schema>;
@@ -11,12 +12,12 @@ export type DB = PostgresJsDatabase<typeof schema>;
 //   of connections next to the database. A Worker can't reuse a connection
 //   from one request in another, so each request gets its own client
 //   (cheap: Hyperdrive does the expensive connecting).
-// - Everywhere else (`npm run dev`, tests, scripts), DATABASE_URL with one
-//   shared pool for the whole process.
+// - Everywhere else (Netlify, `npm run dev`, tests), DATABASE_URL with one
+//   pool per process. On Netlify that's Supabase's transaction pooler
+//   (port 6543), which can't use prepared statements.
 //
 // Migrations are not applied here: run `npm run db:migrate` (see README.md).
 
-const onWorkers = typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
 
 let processDb: DB | undefined;
 const requestDbs = new WeakMap<object, DB>();
@@ -58,7 +59,14 @@ function currentDb(): DB {
     if (!url) {
       throw new Error("DATABASE_URL is not set. For local development run `npm run db:local` (see README.md).");
     }
-    processDb = connect(url, { max: 10, prepare: !url.includes(":6543"), ssl: tlsFor(url) });
+    processDb = connect(url, {
+      // On Netlify every serverless instance has its own pool, all sharing
+      // Supabase's pooler, so each keeps few connections and lets idle
+      // ones go (an instance can be frozen between requests).
+      ...(onNetlify ? { max: 3, idle_timeout: 20, connect_timeout: 10 } : { max: 10 }),
+      prepare: !url.includes(":6543"),
+      ssl: tlsFor(url),
+    });
   }
   return processDb;
 }

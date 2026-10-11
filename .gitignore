@@ -55,3 +55,8 @@ next-env.d.ts
 
 # receipt-reading engine, copied from node_modules (scripts/copy-ocr-assets.mjs)
 /public/ocr/
+
+# Cloudflare build output and local state
+/.open-next/
+/.wrangler/
+.dev.vars*

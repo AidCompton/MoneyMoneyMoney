@@ -200,12 +200,14 @@ These are known and accepted for now, roughly in order of importance.
 3. **Keep Hyperdrive's query caching off.** With caching on, a revoked
    sign-in could keep working until the cached answer expires, and totals
    could lag behind changes.
-4. **The app connects to the database as the `postgres` role.** That role
-   owns the tables and isn't held back by row level security. A dedicated
-   role with only read and write access to `app` would also block dropping
-   tables if the database password ever leaked. It's worth doing later. It
-   needs its own row level security policies, because the lockdown blocks
-   every role that doesn't own the tables.
+4. **The app's database login.** The live Netlify deployment connects as
+   `moneymoney_app`. That role can read and write the app's tables but
+   can't create, alter, empty or drop them, and can't touch the migration
+   records. A leaked connection string can't destroy the schema. It has
+   `bypassrls` because the tables' row level security has no policies (see
+   [deploy-netlify.md, step 3b](deploy-netlify.md#3b-a-database-login-just-for-the-app-recommended)).
+   The Cloudflare route still uses `postgres` through Hyperdrive unless you
+   create the same role.
 5. **Scripts are allowed inline** (`'unsafe-inline'`), because Next.js
    delivers page data in inline scripts. A per-request nonce would be
    stricter. For now, React escapes everything it renders, and test 14 checks

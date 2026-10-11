@@ -75,6 +75,29 @@ Exactly as in [deploy.md, step 3](deploy.md#3-create-the-tables): use the
 **Session pooler** string with `npm run db:migrate`. It prints the Supabase
 project it's updating, so check that ref against your dashboard's address.
 
+## 3b. A database login just for the app (recommended)
+
+Rather than the all-powerful `postgres` login, give the app its own. It can
+read and write the app's data, but it can't create, change, empty or drop
+tables. Run this in Supabase's **SQL Editor**, with a long random password:
+
+```sql
+create role moneymoney_app with login bypassrls password '<a long random password>';
+grant usage on schema app to moneymoney_app;
+grant select, insert, update, delete on all tables in schema app to moneymoney_app;
+-- Tables added by later migrations (run as postgres) get the same access.
+alter default privileges for role postgres in schema app
+  grant select, insert, update, delete on tables to moneymoney_app;
+```
+
+It needs `bypassrls` because every table has row level security with no
+policies, which keeps Supabase's public API roles out. The app's
+connection string then uses the user `moneymoney_app.<project-ref>`
+instead of `postgres.<project-ref>`.
+
+Future migrations (`npm run db:migrate`) still run as `postgres`. If you
+don't know that password, reset it under **Project Settings → Database**.
+
 ## 4. Bring your data across (optional)
 
 Exactly as in [deploy.md, step 5](deploy.md#5-bring-your-data-across).
@@ -92,7 +115,7 @@ Exactly as in [deploy.md, step 5](deploy.md#5-bring-your-data-across).
 
 | Variable | Value |
 | --- | --- |
-| `DATABASE_URL` | Supabase's **Transaction pooler** string (port **6543**), with your password filled in. Serverless functions should use this one. The app turns off prepared statements for it automatically, and connects over TLS. |
+| `DATABASE_URL` | Supabase's **Transaction pooler** string (port **6543**), with the app's login from step 3b: `postgresql://moneymoney_app.<project-ref>:<password>@<pooler host>:6543/postgres`. Copy the pooler host from Supabase's **Connect** panel. Serverless functions should use this one. The app turns off prepared statements for it automatically, and connects over TLS. |
 | `SESSION_SECRET` | A new random secret. Mark it **secret** if Netlify offers the option. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. |
 
 4. Deploy.

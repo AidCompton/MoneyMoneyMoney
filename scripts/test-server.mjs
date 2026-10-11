@@ -8,6 +8,7 @@
 // build). Stops everything when stopped.
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -48,7 +49,10 @@ await migrate(drizzle(sql), { migrationsFolder: "db/migrations" });
 await sql.end();
 console.log(`[test-server] database ready: ${url}`);
 
-const next = spawn("npx", ["next", prod ? "start" : "dev", "-p", port, "-H", "127.0.0.1"], {
+// Next's own CLI, run directly rather than through npx: with npx (and the
+// shell it starts) in between, stopping this script left the server running.
+const nextCli = createRequire(import.meta.url).resolve("next/dist/bin/next");
+const next = spawn(process.execPath, [nextCli, prod ? "start" : "dev", "-p", port, "-H", "127.0.0.1"], {
   stdio: "inherit",
   env: {
     ...process.env,

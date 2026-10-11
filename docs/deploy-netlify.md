@@ -125,7 +125,11 @@ Notes:
 - `netlify.toml` can't hold these values. Netlify's functions don't read
   that file when they run.
 - Changing a variable only takes effect after the next deploy.
-- Pushing to `main` deploys automatically from then on.
+- Pushing to the production branch deploys automatically from then on.
+  Check which branch that is under **Project configuration → Developer
+  settings → Branches and deploy contexts**. It should be `main`.
+- The linked repository is under **Project configuration → Developer
+  settings → Repository**.
 
 **If you're on Netlify Pro**, set **Cloud compute → Functions → Region** to
 London (`lhr`) and redeploy.

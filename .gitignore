@@ -38,6 +38,7 @@ yarn-error.log*
 
 # local household data - never commit
 /data/
+/data-e2e/
 
 # playwright
 /test-results/
@@ -47,3 +48,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local development database (npm run db:local)
+/.postgres/
+/.postgres-e2e/
+
+# receipt-reading engine, copied from node_modules (scripts/copy-ocr-assets.mjs)
+/public/ocr/
+
+# Cloudflare build output and local state
+/.open-next/
+/.wrangler/
+.dev.vars*
+
+# Netlify CLI builds
+/.netlify/

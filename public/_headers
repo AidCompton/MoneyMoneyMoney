@@ -1,0 +1,10 @@
+# Headers for static files served directly by Cloudflare (scripts, styles,
+# icons, the receipt-reading engine). Pages get theirs from next.config.ts.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  Cross-Origin-Resource-Policy: same-origin
+
+/ocr/*
+  Cache-Control: public, max-age=2592000

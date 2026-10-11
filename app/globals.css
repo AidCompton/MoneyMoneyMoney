@@ -1,16 +1,199 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Palette: a deep evergreen night (stability, strength) lit by mint growth
+ * and a warm gold sunrise (optimism, prosperity). Everything sits on frosted
+ * glass panels over a slowly drifting aurora.
+ */
+@theme {
+  --color-night: #06110d;
+  --color-forest: #0c1f18;
+  --color-pine: #123a2b;
+  --color-ivory: #f4efe3;
+  --color-mint: #4fe3a5;
+  --color-jade: #16a06e;
+  --color-gold: #f7c35c;
+  --color-sunrise: #ff9d5c;
+  --color-coral: #ff7a70;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --font-sans: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument), ui-serif, Georgia, serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-night);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background:
+    radial-gradient(120% 80% at 50% -10%, #0f2a20 0%, transparent 60%),
+    linear-gradient(180deg, #07130f 0%, var(--color-night) 100%);
+  color: var(--color-ivory);
+  font-variation-settings: "opsz" 14;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Film grain over everything: keeps the gradients from banding and gives
+   the glass something to catch. Inline SVG, so no network request. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+::selection {
+  background: rgb(247 195 92 / 0.35);
+  color: var(--color-ivory);
+}
+
+/* Big display type: heavy, tightly tracked, optically sized for size. */
+@utility font-display {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  font-variation-settings: "opsz" 96;
+}
+
+/* The serif italic accent used for one word in most headings. */
+@utility font-accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+@utility text-gradient-gold {
+  background: linear-gradient(100deg, var(--color-gold) 0%, var(--color-sunrise) 55%, #ffd99a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility text-gradient-mint {
+  background: linear-gradient(100deg, #c9ffe6 0%, var(--color-mint) 45%, var(--color-gold) 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glass {
+  background: linear-gradient(150deg, rgb(255 255 255 / 0.085) 0%, rgb(255 255 255 / 0.025) 100%);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 30px 60px -30px rgb(0 0 0 / 0.7);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+}
+
+@utility glass-strong {
+  background: linear-gradient(150deg, rgb(20 48 37 / 0.72) 0%, rgb(8 22 17 / 0.62) 100%);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 20px 50px -20px rgb(0 0 0 / 0.8);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  backdrop-filter: blur(28px) saturate(160%);
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Elements GSAP reveals start hidden, but only once JS is known to be on
+   (see the inline script in app/layout.tsx). The delayed fallback makes
+   sure nothing can stay invisible if animation never runs. */
+.js [data-reveal],
+.js [data-split] {
+  visibility: hidden;
+  animation: reveal-fallback 0s 2.5s forwards;
+}
+
+@keyframes reveal-fallback {
+  to {
+    visibility: visible;
+  }
+}
+
+/* Rows added after the page has loaded (a new expense, a new action item)
+   ease in with CSS alone. */
+.row-enter {
+  transition:
+    opacity 0.6s var(--ease-out-expo),
+    translate 0.6s var(--ease-out-expo);
+  @starting-style {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+
+/* Moving highlight across progress fills. */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgb(255 255 255 / 0.45) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: shimmer 3.2s 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  60%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.9) sepia(0.2);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js [data-reveal],
+  .js [data-split] {
+    visibility: visible;
+    animation: none;
+  }
+  .shimmer::after,
+  .row-enter {
+    animation: none;
+    transition: none;
+  }
+}
+
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23f4efe3' stroke-opacity='0.6' stroke-width='1.8'><path d='m6 8 4 4 4-4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-position: right 0.9rem center;
+  background-size: 1.1rem;
+  padding-right: 2.5rem;
+}
+
+option {
+  background: var(--color-forest);
+  color: var(--color-ivory);
+}
+
+/* Grid items default to min-width: auto, so a wide date input or a long
+   truncated line would stretch a column past the edge on phones. */
+form.grid > * {
+  min-width: 0;
 }

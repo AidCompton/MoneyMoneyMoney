@@ -25,6 +25,11 @@ function connect(url: string, options: postgres.Options<Record<string, postgres.
   return drizzle(postgres(url, { onnotice: () => {}, ...options }), { schema });
 }
 
+/** A database on another machine is reached over TLS. */
+function tlsFor(url: string) {
+  return /@(localhost|127\.0\.0\.1)[:/]/.test(url) ? false : ("require" as const);
+}
+
 function currentDb(): DB {
   if (onWorkers) {
     const { env, ctx } = getCloudflareContext();
@@ -40,6 +45,8 @@ function currentDb(): DB {
         // Hyperdrive caches prepared statements; a plain DATABASE_URL to the
         // Supabase transaction pooler (port 6543) can't use them.
         prepare: !!env.HYPERDRIVE,
+        // Hyperdrive itself handles TLS to the database.
+        ssl: env.HYPERDRIVE ? false : tlsFor(url),
       });
       requestDbs.set(ctx, requestDb);
     }
@@ -51,7 +58,7 @@ function currentDb(): DB {
     if (!url) {
       throw new Error("DATABASE_URL is not set. For local development run `npm run db:local` (see README.md).");
     }
-    processDb = connect(url, { max: 10, prepare: !url.includes(":6543") });
+    processDb = connect(url, { max: 10, prepare: !url.includes(":6543"), ssl: tlsFor(url) });
   }
   return processDb;
 }

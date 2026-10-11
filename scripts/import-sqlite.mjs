@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import postgres from "postgres";
+import { describeDatabase } from "./db-target.mjs";
 import { loadEnv } from "./load-env.mjs";
 
 loadEnv();
@@ -111,6 +112,7 @@ upgradeSqlite();
 
 // --- 2. Connect to Postgres and check it's ready and empty -------------------
 
+console.log(`${commit ? "Importing into" : "Checking against"} ${describeDatabase(url)}`);
 const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
 const sql = postgres(url, { max: 1, ssl: local ? false : "require", onnotice: () => {}, prepare: !url.includes(":6543") });
 

@@ -8,6 +8,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { describeDatabase } from "./db-target.mjs";
 import { loadEnv } from "./load-env.mjs";
 
 loadEnv();
@@ -17,7 +18,10 @@ if (!url) {
   process.exit(1);
 }
 
-const sql = postgres(url, { max: 1, onnotice: () => {} });
+console.log(`Updating ${describeDatabase(url)}`);
+// Anything not on this computer is reached over TLS.
+const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
+const sql = postgres(url, { max: 1, ssl: local ? false : "require", onnotice: () => {} });
 try {
   // Two deploys at once can't apply the same migration twice.
   await sql`select pg_advisory_lock(7240117)`;
